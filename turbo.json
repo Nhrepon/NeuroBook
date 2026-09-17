@@ -1,0 +1,61 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "ui": "tui",
+  "globalDependencies": ["tsconfig.base.json", ".env.example"],
+  "globalEnv": [
+    "DATABASE_URL",
+    "REDIS_URL",
+    "JWT_PRIVATE_KEY",
+    "JWT_PUBLIC_KEY",
+    "JWT_KID",
+    "STORAGE_BUCKET",
+    "SMTP_HOST",
+    "SMTP_USER",
+    "SMTP_PASS",
+    "NODE_ENV"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build", "^typecheck"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**"],
+      "inputs": ["src/**", "tests/**", "package.json", "tsconfig.json"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["src/**", "tests/**", "tsconfig.json"]
+    },
+    "lint": {
+      "dependsOn": ["^typecheck"],
+      "inputs": ["src/**", "tests/**", ".eslintrc*"]
+    },
+    "test": {
+      // Ledger + db tests are the §15.5 O1 safety net: a failure must block
+      // everything downstream, since the API is the enforcement layer over them.
+      "dependsOn": ["^build", "^typecheck"],
+      "inputs": ["src/**", "tests/**"],
+      "env": ["DATABASE_URL"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "db:generate": {
+      "cache": false,
+      "inputs": ["src/schema/**", "drizzle.config.ts"]
+    },
+    "db:migrate": {
+      "cache": false,
+      "persistent": false,
+      "env": ["DATABASE_URL"]
+    },
+    "db:seed": {
+      "cache": false,
+      "persistent": false,
+      "env": ["DATABASE_URL"]
+    },
+    "docs": {
+      "cache": false,
+      "inputs": ["**/*.md"]
+    }
+  }
+}

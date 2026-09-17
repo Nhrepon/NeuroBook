@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.next/
+out/
+build/
+*.tsbuildinfo
+
+# Env and secrets — never committed (§15.5 O5)
+.env
+.env.*
+!.env.example
+jwt.private.pem
+jwt.public.pem
+*.pem
+
+# Turbo
+.turbo/
+
+# Postgres local data if cloned in for dev
+pgdata/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
