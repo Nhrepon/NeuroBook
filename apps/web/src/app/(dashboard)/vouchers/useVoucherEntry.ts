@@ -7,12 +7,19 @@
  * a successful save focus returns to the first field of a fresh voucher so the
  * next entry can begin immediately.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 export interface EntryRow {
   accountId: string;
   debit: number;
   credit: number;
+  reference?: string;
 }
 
 export interface VoucherDraft {
@@ -139,7 +146,7 @@ export function useVoucherEntry(initial?: Partial<VoucherDraft>) {
    * `Escape` cancels; `Alt+N` starts a fresh voucher.
    */
   const onKey = useCallback(
-    (event: KeyboardEvent, onSubmit?: () => void, onCancel?: () => void) => {
+    (event: ReactKeyboardEvent, onSubmit?: () => void, onCancel?: () => void) => {
       if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
         onSubmit?.();
