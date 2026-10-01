@@ -1,0 +1,7 @@
+# Mobile (Expo) doesn't ship a Docker image — builds are done via EAS.
+# This file exists only so a docker-compose can reference a placeholder.
+# Use `eas build --platform ios|android` to produce the artifacts.
+FROM alpine:3.20
+LABEL org.opencontainers.image.title="neurobook-mobile" \
+      org.opencontainers.image.description="Mobile builds via Expo EAS — see eas.json"
+CMD ["echo", "Mobile builds are produced by `eas build`. This image is a placeholder."]

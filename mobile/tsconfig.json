@@ -1,0 +1,20 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "incremental": true,
+    "noEmit": true,
+    "lib": ["ES2022", "DOM"],
+    "types": ["react", "react-native", "jest"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@neurobook/shared": ["../src/shared/index.ts"],
+      "@neurobook/shared/ledger": ["../src/shared/ledger/index.ts"],
+      "@neurobook/shared/auth": ["../src/shared/auth/index.ts"],
+      "@neurobook/shared/format": ["../src/shared/format/index.ts"],
+      "@neurobook/shared/env": ["../src/shared/env.ts"]
+    }
+  },
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]
+}

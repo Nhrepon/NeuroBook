@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Detect which paths changed and gate the real jobs on it.
+  # On push-to-main all flags are true (full pipeline); on PRs, only the
+  # affected jobs run. Shared changes fan out to everything because both
+  # apps import it.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      shared: ${{ steps.filter.outputs.shared }}
+      web: ${{ steps.filter.outputs.web }}
+      mobile: ${{ steps.filter.outputs.mobile }}
+      ci: ${{ steps.filter.outputs.ci }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared:
+              - 'packages/shared/**'
+              - 'tsconfig.base.json'
+              - 'package.json'
+            web:
+              - 'apps/web/**'
+              - 'docker-compose.yml'
+              - 'docker/**'
+            mobile:
+              - 'apps/mobile/**'
+            ci:
+              - '.github/**'
+
+  shared:
+    needs: changes
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.web == 'true'
+    name: shared (ledger, money, format)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: packages/shared } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx vitest run --coverage
+      - run: npx tsc --noEmit
+
+  web:
+    needs: [changes, shared]
+    if: |
+      (needs.changes.outputs.web == 'true' && needs.changes.outputs.shared != 'true') ||
+      (needs.changes.outputs.shared == 'true' && needs.shared.result == 'success')
+    name: web (Next.js 16)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: neurobook
+          POSTGRES_PASSWORD: neurobook
+          POSTGRES_DB: neurobook
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U neurobook"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://neurobook:neurobook@localhost:5432/neurobook
+      JWT_SECRET: ci-secret-min-32-bytes-long-padding-x
+      JWT_REFRESH_SECRET: ci-refresh-secret-min-32-bytes-pad
+      JWT_ISSUER: neurobook
+      JWT_AUDIENCE: neurobook.web
+      REDIS_URL: redis://localhost:6379
+      STORAGE_BUCKET: neurobook-uploads
+      S3_ENDPOINT: http://localhost:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: minio
+      S3_SECRET_KEY: minio12345
+      SMTP_HOST: smtp.example.com
+      SMTP_PORT: '587'
+      SMTP_USER: apikey
+      SMTP_PASS: test
+      EMAIL_FROM: 'NeuroBook <no-reply@neurobook.app>'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npm run db:migrate
+      - name: R9 — every tenant table has an RLS policy
+        run: bash scripts/check-rls.sh
+      - run: npx turbo -F @neurobook/web test
+      - run: npx turbo -F @neurobook/web typecheck
+      - run: npx turbo -F @neurobook/web build
+
+  mobile:
+    needs: [changes, shared]
+    if: |
+      (needs.changes.outputs.mobile == 'true' && needs.changes.outputs.shared != 'true') ||
+      (needs.changes.outputs.shared == 'true' && needs.shared.result == 'success')
+    name: mobile (Expo SDK 57 / RN 0.86)
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: apps/mobile } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - run: npx turbo -F @neurobook/mobile typecheck
+      - run: npx jest --ci
+      - run: npx expo install --check
+
+  # CI config itself is checked when .github changes.
+  ci-lint:
+    needs: changes
+    if: needs.changes.outputs.ci == 'true'
+    name: ci (config)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - run: npx turbo lint

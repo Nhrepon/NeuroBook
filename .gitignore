@@ -1,29 +1,52 @@
-# Dependencies
+# dependencies
 node_modules/
+.pnp
+.pnp.js
 
-# Build output
-dist/
+
+.agents
+# next
 .next/
 out/
+next-env.d.ts
+
+# expo
+.expo/
+.expo-shared/
+dist/
+web-build/
+
+# turbo / build
+dist/
 build/
-*.tsbuildinfo
+.turbo
 
-# Env and secrets — never committed (§15.5 O5)
+# testing
+coverage/
+
+# env
 .env
-.env.*
+.env.local
+.env.*.local
 !.env.example
-jwt.private.pem
-jwt.public.pem
-*.pem
 
-# Turbo
-.turbo/
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
 
-# Postgres local data if cloned in for dev
-pgdata/
-
-# Editor / OS
+# os
 .DS_Store
 Thumbs.db
+
+# editor
+.vscode/*
+!.vscode/settings.json.example
+!.vscode/extensions.json
 .idea/
-.vscode/
+
+# misc
+*.tsbuildinfo
+*.pem
+.cache/
