@@ -1,52 +1,42 @@
-# dependencies
+# Dependencies
 node_modules/
-.pnp
-.pnp.js
+.pnpm-store/
 
-
-.agents
-# next
+# Build outputs
 .next/
 out/
-next-env.d.ts
-
-# expo
-.expo/
-.expo-shared/
-dist/
-web-build/
-
-# turbo / build
 dist/
 build/
-.turbo
+*.tsbuildinfo
 
-# testing
-coverage/
-
-# env
+# Environment
 .env
 .env.local
 .env.*.local
-!.env.example
 
-# logs
+# Expo / mobile
+.expo/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+android/
+ios/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-*.log
 
-# os
-.DS_Store
-Thumbs.db
+# Coverage
+coverage/
 
-# editor
-.vscode/*
-!.vscode/settings.json.example
-!.vscode/extensions.json
-.idea/
-
-# misc
-*.tsbuildinfo
-*.pem
-.cache/
+# Turbo
+.turbo/

@@ -1,0 +1,21 @@
+{
+  "name": "@neurobook/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@neurobook/shared": "*",
+    "expo": "~58.0.0",
+    "expo-router": "~58.0.0",
+    "expo-secure-store": "~14.0.0",
+    "react": "19.3.1",
+    "react-native": "0.88.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
