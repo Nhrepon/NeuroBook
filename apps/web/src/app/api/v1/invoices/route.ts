@@ -1,8 +1,8 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/db/client'
 import { invoices, parties } from '@/db/schema'
 import { requireScope } from '@/db/scope'
-import { eq, and } from 'drizzle-orm'
+import { withTenant } from '@/db/tenant'
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 const CreateSchema = z.object({
@@ -16,8 +16,10 @@ const CreateSchema = z.object({
 
 export async function GET() {
   const scope = await requireScope()
-  const rows = await db.select().from(invoices).where(eq(invoices.tenantId, scope.tenantId))
-  return Response.json({ data: rows })
+  return withTenant(scope.tenantId, async (tx) => {
+    const rows = await tx.select().from(invoices).where(eq(invoices.tenantId, scope.tenantId))
+    return Response.json({ data: rows })
+  })
 }
 
 export async function POST(req: NextRequest) {
@@ -26,23 +28,25 @@ export async function POST(req: NextRequest) {
   const parsed = CreateSchema.safeParse(body)
   if (!parsed.success) return Response.json({ error: { code: 'VALIDATION', message: 'invalid input' } }, { status: 400 })
 
-  let customerId = parsed.data.customerId
-  if (!customerId && parsed.data.customerName) {
-    const [p] = await db.insert(parties).values({
-      tenantId: scope.tenantId,
-      name: parsed.data.customerName,
-      type: 'CUSTOMER',
-    }).returning()
-    customerId = p.id
-  }
+  return withTenant(scope.tenantId, async (tx) => {
+    let customerId = parsed.data.customerId
+    if (!customerId && parsed.data.customerName) {
+      const [p] = await tx.insert(parties).values({
+        tenantId: scope.tenantId,
+        name: parsed.data.customerName,
+        type: 'CUSTOMER',
+      }).returning()
+      customerId = p.id
+    }
 
-  const [row] = await db.insert(invoices).values({
-    tenantId: scope.tenantId,
-    customerId: customerId ?? null,
-    date: new Date(parsed.data.date),
-    total: parsed.data.total,
-    vat: parsed.data.vat ?? 0,
-    number: parsed.data.number,
-  }).returning()
-  return Response.json({ data: row }, { status: 201 })
+    const [row] = await tx.insert(invoices).values({
+      tenantId: scope.tenantId,
+      customerId: customerId ?? null,
+      date: new Date(parsed.data.date),
+      total: parsed.data.total,
+      vat: parsed.data.vat ?? 0,
+      number: parsed.data.number,
+    }).returning()
+    return Response.json({ data: row }, { status: 201 })
+  })
 }

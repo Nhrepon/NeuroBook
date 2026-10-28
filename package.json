@@ -10,7 +10,12 @@
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
-    "lint": "turbo run lint"
+    "lint": "turbo run lint",
+    "db:migrate": "turbo run db:migrate",
+    "db:seed": "turbo run db:seed",
+    "db:migrate:reset": "turbo run db:migrate:reset",
+    "db:seed:reset": "turbo run db:seed:reset",
+    "db:studio": "turbo run db:studio"
   },
   "devDependencies": {
     "turbo": "^2.0.0",
@@ -18,6 +23,9 @@
   },
   "packageManager": "npm@10.9.0",
   "allowScripts": {
-    "argon2@0.45.1": true
+    "argon2@0.45.1": true,
+    "esbuild@0.28.2": true,
+    "esbuild@0.18.20": true,
+    "esbuild@0.25.12": true
   }
 }

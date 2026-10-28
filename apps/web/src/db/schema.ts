@@ -4,6 +4,7 @@ import { sql } from 'drizzle-orm'
 export const tenants = pgTable('tenants', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: text('name').notNull(),
+  slug: varchar('slug', { length: 64 }).notNull().unique(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
@@ -13,7 +14,7 @@ export const users = pgTable('users', {
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   email: text('email').notNull(),
   passwordHash: text('password_hash').notNull(),
-  role: varchar('role', { length: 32 }).notNull().default('USER'),
+  role: varchar('role', { length: 32 }).notNull().default('VIEWER'),
   active: boolean('active').notNull().default(true),
   totpSecret: text('totp_secret'),
   totpEnabled: boolean('totp_enabled').notNull().default(false),
@@ -21,6 +22,7 @@ export const users = pgTable('users', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   uniqEmail: uniqueIndex('users_tenant_email_idx').on(t.tenantId, t.email),
+  roleCheck: check('users_role_check', sql`${t.role} IN ('ADMIN', 'ACCOUNTANT', 'VIEWER')`),
 }))
 
 export const sessions = pgTable('sessions', {

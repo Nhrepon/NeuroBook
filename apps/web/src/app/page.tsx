@@ -1,38 +1,41 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
-export default function DashboardPage() {
-  const [kpis, setKpis] = useState<any>(null)
+export default function HomePage() {
+  const router = useRouter()
 
   useEffect(() => {
-    fetch('/api/v1/dashboard').then((r) => r.json()).then((j) => setKpis(j.data))
-  }, [])
+    const token = document.cookie.split('; ').find((c) => c.startsWith('access_token='))
+    if (token) router.replace('/dashboard')
+  }, [router])
 
-  if (!kpis) return <main className="p-6">Loading...</main>
-
-  const posted = kpis.postedVouchers
-  const drafts = kpis.drafts
+  const features = [
+    'Double-entry vouchers with gapless numbering',
+    'Trial balance, P&L, balance sheet',
+    'BD VAT/TDS/Mushak compliance',
+    'Multi-tenant with row-level security',
+    'Offline-first mobile and desktop',
+    'Keyboard-first, accessible UX',
+  ]
 
   return (
-    <main className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Dashboard</h1>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="border rounded p-3">Accounts: {kpis.accounts}</div>
-        <div className="border rounded p-3">Vouchers: {kpis.vouchers}</div>
-        <div className="border rounded p-3">Posted: {posted}</div>
-        <div className="border rounded p-3">Drafts: {drafts}</div>
-        <div className="border rounded p-3">Invoices: {kpis.invoices}</div>
-        <div className="border rounded p-3">Posted Debit: {kpis.postedDebit}</div>
-        <div className="border rounded p-3">Posted Credit: {kpis.postedCredit}</div>
-        <div className="border rounded p-3">Balanced: {String(kpis.balanced)}</div>
-      </div>
-      <p className="mt-4 space-x-2">
-        <a href="/vouchers/new" className="text-blue-600 hover:underline">Create voucher</a>
-        <a href="/accounts" className="text-blue-600 hover:underline">Manage accounts</a>
-        <a href="/invoices" className="text-blue-600 hover:underline">Invoices</a>
-        <a href="/reports" className="text-blue-600 hover:underline">Reports</a>
-      </p>
+    <main className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
+      <section className="max-w-5xl mx-auto px-6 py-16 text-center">
+        <h1 className="text-4xl font-bold mb-4">NeuroBook</h1>
+        <p className="text-lg text-gray-600 mb-8">Accounting platform for Bangladesh — Tally Prime alternative</p>
+        <div className="flex justify-center gap-4 mb-12">
+          <Link href="/login" className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700">Login</Link>
+          <Link href="/register" className="px-6 py-3 border border-blue-600 text-blue-600 rounded-lg font-medium hover:bg-blue-50">Register</Link>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
+          {features.map((f) => (
+            <div key={f} className="border rounded-lg p-4 bg-white shadow-sm">{f}</div>
+          ))}
+        </div>
+      </section>
     </main>
   )
 }

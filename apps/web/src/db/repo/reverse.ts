@@ -1,4 +1,4 @@
-import { db } from '../client'
+import type { TenantTx } from '../tenant'
 import { vouchers, journalLines } from '../schema'
 import { buildReversal } from '@neurobook/shared'
 import { eq, and } from 'drizzle-orm'
@@ -9,12 +9,12 @@ export async function reverseVoucher(input: {
   userId: string
   voucherId: string
   idempotencyKey?: string
-}): Promise<{ originalId: string; reversalId: string; sequenceNumber: string }> {
-  const [original] = await db.select().from(vouchers).where(and(eq(vouchers.id, input.voucherId), eq(vouchers.tenantId, input.tenantId)))
+}, tx: TenantTx): Promise<{ originalId: string; reversalId: string; sequenceNumber: string }> {
+  const [original] = await tx.select().from(vouchers).where(and(eq(vouchers.id, input.voucherId), eq(vouchers.tenantId, input.tenantId)))
   if (!original) throw new Error('NOT_FOUND')
   if (original.status !== 'posted') throw new Error('IMMUTABLE: only posted vouchers can be reversed')
 
-  const lines = await db.select().from(journalLines).where(eq(journalLines.voucherId, original.id))
+  const lines = await tx.select().from(journalLines).where(eq(journalLines.voucherId, original.id))
   const entries = lines.map((l) => ({
     accountId: l.accountId,
     accountType: l.accountType as any,
@@ -30,7 +30,7 @@ export async function reverseVoucher(input: {
     entries,
   })
 
-  const [draft] = await db.insert(vouchers).values({
+  const [draft] = await tx.insert(vouchers).values({
     tenantId: input.tenantId,
     date: new Date(rev.date),
     narration: rev.narration,
@@ -48,9 +48,9 @@ export async function reverseVoucher(input: {
     voucherType: rev.voucherType,
     entries: rev.entries,
     idempotencyKey: input.idempotencyKey,
-  })
+  }, tx)
 
-  await db.update(vouchers).set({
+  await tx.update(vouchers).set({
     status: 'reversed',
     reversedById: draft.id,
   }).where(and(eq(vouchers.id, original.id), eq(vouchers.tenantId, input.tenantId)))

@@ -1,8 +1,10 @@
 import { NextRequest } from 'next/server'
-import { db } from '@/db/client'
 import { vouchers } from '@/db/schema'
-import { requireScope } from '@/db/scope'
+import { requireScope, forbiddenResponse } from '@/db/scope'
+import { withTenant } from '@/db/tenant'
 import { postVoucher } from '@/db/repo/post'
+import { writeAudit } from '@/lib/audit'
+import { can, voucherTypePermission, type VoucherType } from '@neurobook/shared'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
@@ -27,21 +29,34 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
   const parsed = BodySchema.safeParse(body)
   if (!parsed.success) return Response.json({ error: { code: 'VALIDATION', message: 'invalid input' } }, { status: 400 })
 
-  const [draft] = await db.select().from(vouchers).where(and(eq(vouchers.id, id), eq(vouchers.tenantId, scope.tenantId)))
-  if (!draft) return Response.json({ error: { code: 'NOT_FOUND', message: 'voucher not found' } }, { status: 404 })
-
   try {
-    const result = await postVoucher({
-      tenantId: scope.tenantId,
-      userId: scope.userId,
-      voucherId: id,
-      date: parsed.data.date,
-      narration: parsed.data.narration,
-      voucherType: parsed.data.voucherType as any,
-      entries: parsed.data.entries as any,
-      idempotencyKey: parsed.data.idempotencyKey,
+    return await withTenant(scope.tenantId, async (tx) => {
+      const [draft] = await tx.select().from(vouchers).where(and(eq(vouchers.id, id), eq(vouchers.tenantId, scope.tenantId)))
+      if (!draft) return Response.json({ error: { code: 'NOT_FOUND', message: 'voucher not found' } }, { status: 404 })
+      if (!can(scope.role, voucherTypePermission(draft.voucherType as VoucherType))) return forbiddenResponse()
+
+      const result = await postVoucher({
+        tenantId: scope.tenantId,
+        userId: scope.userId,
+        voucherId: id,
+        date: parsed.data.date,
+        narration: parsed.data.narration,
+        voucherType: parsed.data.voucherType as VoucherType,
+        entries: parsed.data.entries as any,
+        idempotencyKey: parsed.data.idempotencyKey,
+      }, tx)
+
+      await writeAudit({
+        tenantId: scope.tenantId,
+        userId: scope.userId,
+        action: 'voucher.post',
+        resourceType: 'voucher',
+        resourceId: id,
+        after: result,
+      }, tx)
+
+      return Response.json({ data: result }, { status: 200 })
     })
-    return Response.json({ data: result }, { status: 200 })
   } catch (e: any) {
     const msg = e?.message ?? 'INTERNAL'
     const code = msg.startsWith('PERIOD_LOCKED') ? 'PERIOD_LOCKED' : msg.startsWith('UNBALANCED') ? 'UNBALANCED' : 'VALIDATION'

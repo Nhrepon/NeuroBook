@@ -6,14 +6,19 @@
     "dev": "next dev",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "db:seed": "tsx src/db/seed.ts",
+    "db:rls": "tsx src/db/apply-rls.ts",
+    "db:setup": "drizzle-kit push --force && tsx src/db/apply-rls.ts && tsx src/db/seed.ts"
   },
   "dependencies": {
     "@neurobook/shared": "*",
+    "@react-pdf/renderer": "^4.9.0",
     "@tailwindcss/postcss": "^4.3.3",
     "argon2": "^0.45.1",
     "drizzle-orm": "^0.36.0",
     "jose": "^6.2.13",
+    "lucide-react": "^1.63.0",
     "next": "^16.4.3",
     "postcss": "^8.5.23",
     "postgres": "^3.4.0",
@@ -24,6 +29,8 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0"
+    "@types/react-dom": "^19.0.0",
+    "drizzle-kit": "^0.31.11",
+    "tsx": "^4.19.0"
   }
 }
