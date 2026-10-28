@@ -10,6 +10,7 @@ import { z } from 'zod'
 const BodySchema = z.object({
   arAccountId: z.string().uuid(),
   revenueAccountId: z.string().uuid(),
+  vatAccountId: z.string().uuid().optional(),
 })
 
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -34,6 +35,15 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         createdBy: scope.userId,
       }).returning()
 
+      const vatAccountId = parsed.data.vatAccountId ?? parsed.data.revenueAccountId
+      const entries = [
+        { accountId: parsed.data.arAccountId, accountType: 'ASSET', debit: invoice.total, credit: 0 },
+        { accountId: parsed.data.revenueAccountId, accountType: 'REVENUE', debit: 0, credit: invoice.total - invoice.vat },
+      ] as { accountId: string; accountType: string; debit: number; credit: number }[]
+      if (invoice.vat > 0) {
+        entries.push({ accountId: vatAccountId, accountType: 'LIABILITY', debit: 0, credit: invoice.vat })
+      }
+
       const result = await postVoucher({
         tenantId: scope.tenantId,
         userId: scope.userId,
@@ -41,11 +51,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
         date: invoice.date.toISOString().slice(0, 10),
         narration: `Invoice ${invoice.number ?? invoice.id}`,
         voucherType: 'SALES_INVOICE' as any,
-        entries: [
-          { accountId: parsed.data.arAccountId, accountType: 'ASSET', debit: invoice.total, credit: 0 },
-          { accountId: parsed.data.revenueAccountId, accountType: 'REVENUE', debit: 0, credit: invoice.total - invoice.vat },
-          { accountId: parsed.data.revenueAccountId, accountType: 'LIABILITY', debit: 0, credit: invoice.vat },
-        ] as any,
+        entries: entries as any,
       }, tx)
 
       await tx.update(invoices).set({ status: 'sent', voucherId: draft.id }).where(and(eq(invoices.id, invoice.id), eq(invoices.tenantId, scope.tenantId)))

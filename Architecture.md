@@ -439,3 +439,4 @@ CI gates: typecheck, lint, tests, bundle budgets, migration dry-run, RLS asserti
 ## 24. Decision Log (ADRs)
 
 Every significant choice (ORM, auth, offline strategy, money representation) is recorded as an ADR in `docs/adr/` with context, decision, and consequences. New contributors read these before proposing changes.
+

@@ -5,6 +5,11 @@
     "build": { "dependsOn": ["^build"], "outputs": [".next/**", "dist/**"] },
     "typecheck": { "dependsOn": ["^typecheck"] },
     "test": { "dependsOn": ["^build"] },
-    "lint": {}
+    "lint": {},
+    "db:seed": { "cache": false },
+    "db:chart": { "cache": false },
+    "db:rls": { "cache": false },
+    "db:setup": { "cache": false },
+    "db:studio": { "cache": false, "persistent": true }
   }
 }

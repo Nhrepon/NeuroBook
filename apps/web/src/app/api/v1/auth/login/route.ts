@@ -2,12 +2,9 @@ import { NextRequest } from 'next/server'
 import { db } from '@/db/client'
 import { tenants, users } from '@/db/schema'
 import { eq } from 'drizzle-orm'
-import argon2 from 'argon2'
 import { signToken } from '@/lib/jwt'
 import { writeAudit } from '@/lib/audit'
-
-// Valid argon2id hash used only to keep verification timing uniform when the email does not exist.
-const DUMMY_HASH = '$argon2id$v=19$m=65536,p=4,t=3$S/6U0ypzke3TlJE6gRlK7g$Ga+IuqLw8GYCGhNj3kxFA5BSfBtMD7XtMaK/qfn3KjM'
+import { verifyPassword } from '@/lib/credentials'
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
@@ -36,7 +33,7 @@ export async function POST(req: NextRequest) {
   }
 
   const match = matches[0]
-  const ok = await argon2.verify(match?.user.passwordHash ?? DUMMY_HASH, password)
+  const ok = await verifyPassword(password, match?.user.passwordHash)
   if (!match || !ok) {
     return Response.json({ error: { code: 'UNAUTHORIZED', message: 'invalid credentials' } }, { status: 401 })
   }

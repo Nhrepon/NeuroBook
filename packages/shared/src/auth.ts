@@ -17,7 +17,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   ADMIN: 'Full access, including users, settings, and period closing.',
-  MANAGER: 'Everything except user management.',
+  MANAGER: 'Everything except user and company administration.',
   ACCOUNTANT: 'All day-to-day accounting, masters, banking, and audit.',
   SALES: 'Sales invoices, receipts, and customers.',
   PURCHASER: 'Purchase invoices, payments, suppliers, and stock.',
@@ -43,6 +43,8 @@ export const PERMISSIONS = [
   'settings:write',
   'period:manage',
   'user:manage',
+  'tenant:switch',
+  'tenant:manage',
   'audit:read',
 ] as const
 export type Permission = (typeof PERMISSIONS)[number]
@@ -53,7 +55,7 @@ export type Permission = (typeof PERMISSIONS)[number]
  */
 export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
   ADMIN: PERMISSIONS,
-  MANAGER: PERMISSIONS.filter((p) => p !== 'user:manage'),
+  MANAGER: PERMISSIONS.filter((p) => p !== 'user:manage' && p !== 'tenant:manage'),
   ACCOUNTANT: [
     'voucher:write', 'sales:write', 'purchase:write', 'payment:write', 'receipt:write',
     'invoice:write', 'account:write', 'party:write', 'product:write', 'stock:write',

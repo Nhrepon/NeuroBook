@@ -32,7 +32,6 @@ export function requiredPermissions(method: string, pathname: string): Permissio
 export const PAGE_PERMISSIONS: ReadonlyArray<{ prefix: string; permission: Permission }> = [
   { prefix: '/dashboard/users', permission: 'user:manage' },
   { prefix: '/dashboard/settings', permission: 'settings:write' },
-  { prefix: '/dashboard/periods', permission: 'period:manage' },
   { prefix: '/dashboard/audit', permission: 'audit:read' },
 ]
 

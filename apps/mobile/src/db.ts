@@ -10,6 +10,12 @@ export async function getDb(): Promise<SQLite.SQLiteDatabase> {
     CREATE TABLE IF NOT EXISTS vouchers (id TEXT PRIMARY KEY, date TEXT, narration TEXT, status TEXT, sequenceNumber TEXT);
     CREATE TABLE IF NOT EXISTS outbox (id INTEGER PRIMARY KEY AUTOINCREMENT, method TEXT, path TEXT, body TEXT, createdAt TEXT);
   `)
+  // Older installs predate the voucherType column; add it once if it is missing.
+  try {
+    await db.execAsync('ALTER TABLE vouchers ADD COLUMN voucherType TEXT')
+  } catch {
+    // column already exists
+  }
   return db
 }
 
@@ -24,6 +30,36 @@ export async function cacheAccounts(accounts: { id: string; name: string; code: 
 export async function listAccounts() {
   const d = await getDb()
   return d.getAllAsync<{ id: string; name: string; code: string; type: string }>('SELECT * FROM accounts')
+}
+
+export interface CachedVoucher {
+  id: string
+  date: string
+  narration: string
+  voucherType: string | null
+  status: string
+  sequenceNumber: string | null
+}
+
+export async function cacheVouchers(rows: CachedVoucher[]) {
+  const d = await getDb()
+  await d.runAsync('DELETE FROM vouchers')
+  for (const v of rows) {
+    await d.runAsync(
+      'INSERT INTO vouchers (id,date,narration,voucherType,status,sequenceNumber) VALUES (?,?,?,?,?,?)',
+      v.id,
+      v.date,
+      v.narration,
+      v.voucherType,
+      v.status,
+      v.sequenceNumber,
+    )
+  }
+}
+
+export async function listVouchers() {
+  const d = await getDb()
+  return d.getAllAsync<CachedVoucher>('SELECT * FROM vouchers ORDER BY date DESC')
 }
 
 export async function syncOutbox(token: string, apiBase: string) {

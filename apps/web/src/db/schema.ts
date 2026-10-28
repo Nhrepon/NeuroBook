@@ -5,6 +5,12 @@ export const tenants = pgTable('tenants', {
   id: uuid('id').defaultRandom().primaryKey(),
   name: text('name').notNull(),
   slug: varchar('slug', { length: 64 }).notNull().unique(),
+  /**
+   * Company password, checked when a session switches into this tenant. Separate
+   * from any person's login password: it belongs to the company, not the user.
+   * Null until an admin sets one in Settings.
+   */
+  passwordHash: text('password_hash'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
@@ -22,7 +28,7 @@ export const users = pgTable('users', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   uniqEmail: uniqueIndex('users_tenant_email_idx').on(t.tenantId, t.email),
-  roleCheck: check('users_role_check', sql`${t.role} IN ('ADMIN', 'ACCOUNTANT', 'VIEWER')`),
+  roleCheck: check('users_role_check', sql`${t.role} IN ('ADMIN', 'MANAGER', 'ACCOUNTANT', 'SALES', 'PURCHASER', 'CASHIER', 'STORE_KEEPER', 'AUDITOR', 'VIEWER')`),
 }))
 
 export const sessions = pgTable('sessions', {

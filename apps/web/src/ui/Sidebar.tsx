@@ -3,9 +3,10 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import LogoutButton from './LogoutButton'
+import TenantBadge from './TenantBadge'
 import {
-  LayoutDashboard, FileText, PlusCircle, BookOpen, Receipt, Users, Package,
-  ShoppingCart, TrendingUp, BarChart3, Landmark, Percent, Settings, Calendar, ScrollText, UserCog,
+  ChevronsLeft, ChevronsRight, LayoutDashboard, FileText, PlusCircle, BookOpen, Receipt, Users, Package,
+  ShoppingCart, TrendingUp, BarChart3, Landmark, Percent, Settings, ScrollText, UserCog,
 } from 'lucide-react'
 import { ROLE_LABELS, can, type Permission, type Role } from '@neurobook/shared'
 
@@ -27,7 +28,6 @@ type MenuItem = {
 const menu: MenuItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/dashboard/vouchers', label: 'Vouchers', icon: FileText },
-  { href: '/dashboard/vouchers/new', label: 'New Voucher', icon: PlusCircle, permission: ['admin', 'accountant'] },
   { href: '/dashboard/accounts', label: 'Accounts (Ledger)', icon: BookOpen, permission: ['account:write'] },
   { href: '/dashboard/invoices', label: 'Invoices', icon: Receipt, permission: ['invoice:write'] },
   { href: '/dashboard/parties', label: 'Parties', icon: Users, permission: ['party:write'] },
@@ -42,7 +42,6 @@ const menu: MenuItem[] = [
   { href: '/dashboard/tax/rates', label: 'Tax Rates', icon: Percent, permission: ['tax:write'] },
   { href: '/dashboard/users', label: 'Users & Roles', icon: UserCog, permission: ['admin'] },
   { href: '/dashboard/settings', label: 'Settings', icon: Settings, permission: ['settings:write'] },
-  { href: '/dashboard/periods', label: 'Fiscal Periods', icon: Calendar, permission: ['period:manage'] },
   { href: '/dashboard/audit', label: 'Audit Log', icon: ScrollText, permission: ['audit:read'] },
 ]
 
@@ -66,15 +65,22 @@ export default function Sidebar({ role = 'VIEWER' }: { role?: Role }) {
 
   return (
     <aside className={`${collapsed ? 'w-16' : 'w-60'} sticky top-0 h-screen shrink-0 border-r border-gray-200 flex flex-col overflow-hidden transition-all duration-200`}>
-      <div className="flex items-center justify-between p-3 border-b border-gray-200 shrink-0">
-        {!collapsed && <span className="font-bold">NeuroBook</span>}
-        <button
-          onClick={() => setCollapsed((c) => !c)}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          className="text-sm px-2 py-1 border rounded"
-        >
-          {collapsed ? '»' : '«'}
-        </button>
+      <div className="shrink-0 border-b border-gray-200">
+        <div className={`flex items-center p-3 ${collapsed ? 'justify-center' : 'justify-between'}`}>
+          {/* {!collapsed && <span className="font-bold">NeuroBook</span>} */}
+          {!collapsed && <TenantBadge compact />}
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!collapsed}
+            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900"
+          >
+            {collapsed ? <ChevronsRight size={15} aria-hidden /> : <ChevronsLeft size={15} aria-hidden />}
+          </button>
+        </div>
+        
       </div>
       <nav className="flex-1 overflow-y-auto p-2 gap-1 flex flex-col scrollbar-hide">
         {items.map((m) => {

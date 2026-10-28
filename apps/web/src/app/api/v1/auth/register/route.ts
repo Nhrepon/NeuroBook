@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { db } from '@/db/client'
-import { tenants, users, accounts } from '@/db/schema'
+import { companySettings, tenants, users } from '@/db/schema'
+import { ensureDefaultChart } from '@/db/chart'
 import { eq } from 'drizzle-orm'
 import argon2 from 'argon2'
 import { signToken } from '@/lib/jwt'
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
   const hash = await argon2.hash(password, { type: argon2.argon2id })
 
   const result = await db.transaction(async (tx) => {
-    const [tenant] = await tx.insert(tenants).values({ name: companyName, slug }).returning()
+    const [tenant] = await tx.insert(tenants).values({ name: companyName, slug, passwordHash: hash }).returning()
     const [user] = await tx.insert(users).values({
       tenantId: tenant.id,
       email,
@@ -58,13 +59,11 @@ export async function POST(req: NextRequest) {
       role: 'ADMIN',
     }).returning()
 
-    await tx.insert(accounts).values([
-      { tenantId: tenant.id, name: 'Cash', code: '1100', type: 'ASSET' },
-      { tenantId: tenant.id, name: 'Accounts Receivable', code: '1200', type: 'ASSET' },
-      { tenantId: tenant.id, name: 'VAT Payable', code: '2100', type: 'LIABILITY' },
-      { tenantId: tenant.id, name: 'Sales Revenue', code: '4000', type: 'REVENUE' },
-      { tenantId: tenant.id, name: 'General Expense', code: '5000', type: 'EXPENSE' },
-    ])
+    // Seed the company profile so Settings opens with the registered name
+    // instead of an empty form (which would later blank out `tenants.name`).
+    await tx.insert(companySettings).values({ tenantId: tenant.id, companyName })
+
+    await ensureDefaultChart(tenant.id, tx as any)
 
     await writeAudit(
       {

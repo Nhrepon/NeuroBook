@@ -11,11 +11,13 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "lint": "turbo run lint",
-    "db:migrate": "turbo run db:migrate",
-    "db:seed": "turbo run db:seed",
-    "db:migrate:reset": "turbo run db:migrate:reset",
-    "db:seed:reset": "turbo run db:seed:reset",
-    "db:studio": "turbo run db:studio"
+    "db:setup": "npm run --workspace=@neurobook/web db:setup",
+    "db:seed": "npm run --workspace=@neurobook/web db:seed",
+    "db:chart": "npm run --workspace=@neurobook/web db:chart",
+    "db:multi-tenant": "npm run --workspace=@neurobook/web db:multi-tenant --",
+    "db:sync-names": "npm run --workspace=@neurobook/web db:sync-names --",
+    "db:rls": "npm run --workspace=@neurobook/web db:rls",
+    "db:studio": "npm run --workspace=@neurobook/web db:studio"
   },
   "devDependencies": {
     "turbo": "^2.0.0",

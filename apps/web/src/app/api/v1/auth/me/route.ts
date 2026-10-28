@@ -1,25 +1,14 @@
 import { requireScope } from '@/db/scope'
-import { withTenant } from '@/db/tenant'
-import { tenants, users } from '@/db/schema'
-import { and, eq } from 'drizzle-orm'
+import { sessionProfile } from '@/lib/tenant-membership'
 
+/**
+ * The session's own profile: who is signed in and which company the request is
+ * bound to. Read from the tenant in the token rather than the user's home row, so
+ * an ADMIN visiting another company sees that company, not its own.
+ */
 export async function GET() {
   const scope = await requireScope()
-  return withTenant(scope.tenantId, async (tx) => {
-    const [row] = await tx
-      .select({
-        id: users.id,
-        email: users.email,
-        role: users.role,
-        active: users.active,
-        tenantName: tenants.name,
-        tenantSlug: tenants.slug,
-      })
-      .from(users)
-      .innerJoin(tenants, eq(tenants.id, users.tenantId))
-      .where(and(eq(users.id, scope.userId), eq(users.tenantId, scope.tenantId)))
-
-    if (!row) return Response.json({ error: { code: 'NOT_FOUND', message: 'user not found' } }, { status: 404 })
-    return Response.json({ data: row })
-  })
+  const me = await sessionProfile(scope)
+  if (!me) return Response.json({ error: { code: 'NOT_FOUND', message: 'user not found' } }, { status: 404 })
+  return Response.json({ data: me })
 }

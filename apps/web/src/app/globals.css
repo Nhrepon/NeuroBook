@@ -2,7 +2,14 @@
 
 html, body {
   height: 100%;
-  overflow: hidden;
+}
+
+/* The dashboard shell locks scrolling itself; auth pages must stay scrollable. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 :root {

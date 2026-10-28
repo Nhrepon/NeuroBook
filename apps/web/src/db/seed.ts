@@ -1,7 +1,8 @@
 import argon2 from 'argon2'
 import { and, eq } from 'drizzle-orm'
 import { db } from './client'
-import { tenants, users, accounts } from './schema'
+import { tenants, users } from './schema'
+import { ensureDefaultChart } from './chart'
 
 async function main() {
   let [tenant] = await db.select().from(tenants).where(eq(tenants.slug, 'demo'))
@@ -10,6 +11,12 @@ async function main() {
   }
 
   const hash = await argon2.hash('password123', { type: argon2.argon2id })
+
+  // Company password used by the dashboard switcher; never overwritten once set.
+  if (!tenant.passwordHash) {
+    await db.update(tenants).set({ passwordHash: hash, updatedAt: new Date() }).where(eq(tenants.id, tenant.id))
+  }
+
   const demoUsers = [
     { email: 'admin@demo.com', role: 'ADMIN' as const },
     { email: 'manager@demo.com', role: 'MANAGER' as const },
@@ -32,18 +39,10 @@ async function main() {
     }
   }
 
-  const [account] = await db.select({ id: accounts.id }).from(accounts).where(eq(accounts.tenantId, tenant.id))
-  if (!account) {
-    await db.insert(accounts).values([
-      { tenantId: tenant.id, name: 'Cash', code: '1100', type: 'ASSET' },
-      { tenantId: tenant.id, name: 'Accounts Receivable', code: '1200', type: 'ASSET' },
-      { tenantId: tenant.id, name: 'VAT Payable', code: '2100', type: 'LIABILITY' },
-      { tenantId: tenant.id, name: 'Sales Revenue', code: '4000', type: 'REVENUE' },
-      { tenantId: tenant.id, name: 'General Expense', code: '5000', type: 'EXPENSE' },
-    ])
-  }
+  const added = await ensureDefaultChart(tenant.id)
 
   console.log('Seeded demo tenant (code: demo).')
+  if (added > 0) console.log(`Added ${added} missing default ledger accounts.`)
   console.log('Password for all demo users: password123')
   console.log('  admin@demo.com      ADMIN')
   console.log('  manager@demo.com    MANAGER')

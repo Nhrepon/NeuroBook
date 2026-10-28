@@ -8,7 +8,11 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:seed": "tsx src/db/seed.ts",
+    "db:chart": "tsx src/db/backfill-chart.ts",
+    "db:multi-tenant": "tsx src/db/seed-multi-tenant.ts",
+    "db:sync-names": "tsx src/db/sync-company-names.ts",
     "db:rls": "tsx src/db/apply-rls.ts",
+    "db:studio": "drizzle-kit studio",
     "db:setup": "drizzle-kit push --force && tsx src/db/apply-rls.ts && tsx src/db/seed.ts"
   },
   "dependencies": {
@@ -16,7 +20,7 @@
     "@react-pdf/renderer": "^4.9.0",
     "@tailwindcss/postcss": "^4.3.3",
     "argon2": "^0.45.1",
-    "drizzle-orm": "^0.36.0",
+    "drizzle-orm": "^0.45.4",
     "jose": "^6.2.13",
     "lucide-react": "^1.63.0",
     "next": "^16.4.3",
