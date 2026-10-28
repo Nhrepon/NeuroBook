@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { AlertTriangle, BookOpen, CheckCircle2, KeyRound, Loader2, Save, Settings as SettingsIcon } from 'lucide-react'
+import { AlertTriangle, BookOpen, CheckCircle2, KeyRound, Loader2, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
 import { can, type Role } from '@neurobook/shared'
 import Field, { FormAlert } from '@/ui/Field'
 import FiscalPeriodsPanel from '@/ui/FiscalPeriodsPanel'
@@ -16,6 +16,12 @@ interface CompanySettings {
   currency: string | null
   fiscalYearStartMonth: number | null
   logoUrl: string | null
+}
+
+interface TenantInfo {
+  id: string
+  name: string
+  slug: string
 }
 
 const CURRENCIES = ['BDT', 'USD', 'EUR', 'GBP', 'INR', 'AED', 'SAR', 'MYR']
@@ -52,11 +58,18 @@ export default function SettingsPage() {
   const [pwError, setPwError] = useState<string | null>(null)
   const [pwSaved, setPwSaved] = useState(false)
 
+  const [tenant, setTenant] = useState<TenantInfo | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteCode, setDeleteCode] = useState('')
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
   useEffect(() => {
     fetch('/api/v1/settings')
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('settings'))))
-      .then((j: { data: CompanySettings | null; meta?: { companyPasswordSet?: boolean } }) => {
+      .then((j: { data: CompanySettings | null; meta?: { companyPasswordSet?: boolean; tenant?: TenantInfo | null } }) => {
         setCompanyPasswordSet(Boolean(j.meta?.companyPasswordSet))
+        setTenant(j.meta?.tenant ?? null)
         if (!j.data) return
         setCompanyName(j.data.companyName ?? '')
         setBinNumber(j.data.binNumber ?? '')
@@ -154,6 +167,31 @@ export default function SettingsPage() {
       setPwError('Network error. Please try again.')
     } finally {
       setPwBusy(false)
+    }
+  }
+
+  /**
+   * Deletes this company and everything in it, after the code has been typed
+   * out. It is the company this session is working in, so the server ends the
+   * session and the browser has to sign in again — with another company.
+   */
+  async function deleteCompany(e: React.FormEvent) {
+    e.preventDefault()
+    if (!tenant || deleteCode.trim().toLowerCase() !== tenant.slug) return
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      const res = await fetch(`/api/v1/tenants?id=${encodeURIComponent(tenant.id)}`, { method: 'DELETE' })
+      const body = await res.json().catch(() => null)
+      if (!res.ok) {
+        setDeleteError(body?.error?.message ?? 'Could not delete the company.')
+        setDeleteBusy(false)
+        return
+      }
+      window.location.href = '/login?deleted=1'
+    } catch {
+      setDeleteError('Network error. Please try again.')
+      setDeleteBusy(false)
     }
   }
 
@@ -293,8 +331,13 @@ export default function SettingsPage() {
             Company password
           </h2>
           <p className="mt-1 text-xs text-gray-500">
-            Asked for when an admin or manager switches into this company from another one. It belongs to the company,
-            not to a person, so everyone who may switch into it uses the same password.
+            One password per company: everyone who switches into this company types the same one, and changing it changes
+            it for all of them. Only an admin can change it, and your current one is required here. To change another
+            company&apos;s password without knowing it, use{' '}
+            <Link href="/dashboard/companies" className="font-medium text-blue-600 hover:underline">
+              Companies
+            </Link>
+            .
           </p>
 
           <p className="mt-2">
@@ -343,7 +386,8 @@ export default function SettingsPage() {
           {pwSaved && (
             <p className="mt-4 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
               <CheckCircle2 size={16} aria-hidden />
-              Company password updated. Tell the other admins and managers who switch into this company.
+              Company password updated. Everyone who switches into this company — other admins, managers and users —
+              now uses the new one.
             </p>
           )}
 
@@ -385,6 +429,120 @@ export default function SettingsPage() {
           </Link>
         </div>
       </section>
+
+      {role && canManageCompany && tenant && (
+        <section className="rounded-xl border border-red-200 bg-white p-4 sm:p-5">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-red-700">
+            <Trash2 size={15} aria-hidden />
+            Danger zone
+          </h2>
+          <p className="mt-1 text-xs text-gray-500">
+            Deleting a company erases it permanently. This is the company you are working in now, so deleting it ends
+            this session and you sign in again with another company.
+          </p>
+
+          <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-800">
+            <p className="font-semibold">
+              Everything belonging to {tenant.name} is deleted, and it cannot be undone:
+            </p>
+            <ul className="mt-1 list-inside list-disc space-y-0.5">
+              <li>its users and their access</li>
+              <li>chart of accounts, vouchers, journal entries and fiscal periods</li>
+              <li>invoices, payments, parties, products, stock and bank data</li>
+              <li>company settings, tax rates and this company&apos;s audit log</li>
+            </ul>
+          </div>
+
+          <div className="mt-4 flex items-center gap-3 border-t border-gray-100 pt-4">
+            <button
+              type="button"
+              onClick={() => setDeleteOpen(true)}
+              className="flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+            >
+              <Trash2 size={15} aria-hidden />
+              Delete this company
+            </button>
+            <span className="font-mono text-xs text-gray-400">{tenant.slug}</span>
+          </div>
+        </section>
+      )}
+
+      {deleteOpen && tenant && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-md rounded-xl border border-red-200 bg-white p-4 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-base font-bold text-red-700">
+                <AlertTriangle size={17} aria-hidden />
+                Delete {tenant.name}?
+              </h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteOpen(false)
+                  setDeleteCode('')
+                  setDeleteError(null)
+                }}
+                aria-label="Close"
+                className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X size={16} aria-hidden />
+              </button>
+            </div>
+
+            <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
+              <p className="font-semibold">This cannot be undone.</p>
+              <p className="mt-1">
+                Every record of <span className="font-semibold">{tenant.name}</span> (
+                <span className="font-mono text-xs">{tenant.slug}</span>) is erased permanently — users, ledgers,
+                vouchers, invoices, payments, settings and its audit log. You are working in this company, so you will be
+                signed out.
+              </p>
+            </div>
+
+            <form onSubmit={deleteCompany} className="mt-3 space-y-3">
+              <div>
+                <label htmlFor="delete-company-code" className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Type <span className="font-mono text-gray-900">{tenant.slug}</span> to confirm
+                </label>
+                <input
+                  id="delete-company-code"
+                  autoFocus
+                  value={deleteCode}
+                  onChange={(e) => setDeleteCode(e.target.value)}
+                  placeholder={tenant.slug}
+                  autoComplete="off"
+                  className={controlClass}
+                />
+              </div>
+
+              {deleteError && <FormAlert message={deleteError} />}
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteOpen(false)
+                    setDeleteCode('')
+                    setDeleteError(null)
+                  }}
+                  disabled={deleteBusy}
+                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={deleteBusy || deleteCode.trim().toLowerCase() !== tenant.slug}
+                  className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {deleteBusy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Trash2 size={14} aria-hidden />}
+                  {deleteBusy ? 'Deleting...' : 'Delete company permanently'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

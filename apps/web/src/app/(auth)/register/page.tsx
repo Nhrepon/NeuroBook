@@ -6,17 +6,7 @@ import { useRouter } from 'next/navigation'
 import { ArrowRight, Building2, Check, Loader2, Lock, Mail, Tag } from 'lucide-react'
 import AuthShell from '@/ui/AuthShell'
 import Field, { FormAlert } from '@/ui/Field'
-
-/** Mirrors the server-side slug rules so the preview matches what gets stored. */
-function previewSlug(input: string) {
-  return input
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 48)
-}
+import { baseSlug } from '@/lib/company-slug'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -27,7 +17,7 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const slug = useMemo(() => previewSlug(companySlug || companyName), [companySlug, companyName])
+  const slug = useMemo(() => baseSlug(companySlug || companyName), [companySlug, companyName])
   const passwordOk = password.length >= 8
 
   async function submit(e: React.FormEvent) {

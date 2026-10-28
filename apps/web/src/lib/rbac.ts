@@ -31,6 +31,7 @@ export function requiredPermissions(method: string, pathname: string): Permissio
 /** Pages that require a specific permission (checked by the proxy). */
 export const PAGE_PERMISSIONS: ReadonlyArray<{ prefix: string; permission: Permission }> = [
   { prefix: '/dashboard/users', permission: 'user:manage' },
+  { prefix: '/dashboard/companies', permission: 'tenant:manage' },
   { prefix: '/dashboard/settings', permission: 'settings:write' },
   { prefix: '/dashboard/audit', permission: 'audit:read' },
 ]

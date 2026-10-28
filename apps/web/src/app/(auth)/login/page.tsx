@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ArrowRight, Building2, Loader2, Lock, Mail, Sparkles } from 'lucide-react'
@@ -16,6 +16,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Reached after deleting the company the session was working in.
+    if (new URLSearchParams(window.location.search).get('deleted')) {
+      setNotice('That company and all of its data were deleted. Sign in with another company to continue.')
+    }
+  }, [])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -61,6 +69,10 @@ export default function LoginPage() {
       ]}
     >
       <form onSubmit={submit} className="space-y-4">
+        {notice && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">{notice}</p>
+        )}
+
         {error && <FormAlert message={error} />}
 
         <Field

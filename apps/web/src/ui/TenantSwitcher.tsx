@@ -141,8 +141,9 @@ export default function TenantSwitcher({ companies }: { companies: Company[] }) 
             ) : (
               <>
                 <p className="mt-1 text-xs text-gray-500">
-                  Enter <span className="font-semibold text-gray-700">{target.name}</span>&apos;s company password. It
-                  belongs to the company, not to you, so other admins and managers use the same one.
+                  Enter <span className="font-semibold text-gray-700">{target.name}</span>&apos;s company password. One
+                  password covers the whole company, so other admins and users use the same one. An admin can set a new
+                  one from the Companies page.
                 </p>
 
                 <input

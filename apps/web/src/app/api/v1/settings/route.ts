@@ -28,10 +28,18 @@ export async function GET() {
   return withTenant(scope.tenantId, async (tx) => {
     const [row] = await tx.select().from(companySettings).where(eq(companySettings.tenantId, scope.tenantId))
     const [tenant] = await tx
-      .select({ passwordHash: tenants.passwordHash })
+      .select({ id: tenants.id, name: tenants.name, slug: tenants.slug, passwordHash: tenants.passwordHash })
       .from(tenants)
       .where(eq(tenants.id, scope.tenantId))
-    return Response.json({ data: row ?? null, meta: { companyPasswordSet: Boolean(tenant?.passwordHash) } })
+    return Response.json({
+      data: row ?? null,
+      meta: {
+        companyPasswordSet: Boolean(tenant?.passwordHash),
+        // The Settings danger zone asks the admin to type the code before deleting,
+        // so the page needs the id and slug of the company it is showing.
+        tenant: tenant ? { id: tenant.id, name: tenant.name, slug: tenant.slug } : null,
+      },
+    })
   })
 }
 
@@ -100,9 +108,13 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * Company password: the credential the dashboard switcher asks for. It belongs
- * to the tenant, so only ADMIN may rotate it, and the current one must be known
- * (except for the first set, which bootstraps a tenant that has none yet).
+ * Company password for the company this session is already in — one company, one
+ * password, shared by everyone who switches into it.
+ *
+ * Only ADMIN may rotate it, and the current password **is** required once one is
+ * set: whoever rotates it from inside has to prove they know it. An operator that
+ * does not (a lost password, a company it cannot enter) uses the Companies page
+ * instead, where `PATCH /api/v1/tenants` changes any company without that check.
  */
 export async function PATCH(req: NextRequest) {
   const scope = await requireScope()
@@ -121,7 +133,7 @@ export async function PATCH(req: NextRequest) {
 
   return withTenant(scope.tenantId, async (tx) => {
     const [tenant] = await tx
-      .select({ id: tenants.id, passwordHash: tenants.passwordHash })
+      .select({ id: tenants.id, slug: tenants.slug, passwordHash: tenants.passwordHash })
       .from(tenants)
       .where(eq(tenants.id, scope.tenantId))
     if (!tenant) return Response.json({ error: { code: 'NOT_FOUND', message: 'company not found' } }, { status: 404 })
@@ -145,7 +157,7 @@ export async function PATCH(req: NextRequest) {
       resourceType: 'tenant',
       resourceId: scope.tenantId,
       before: { hadPassword: Boolean(tenant.passwordHash) },
-      after: { hadPassword: true },
+      after: { hadPassword: true, slug: tenant.slug, by: 'admin' },
     }, tx)
 
     return Response.json({ data: { companyPasswordSet: true } })

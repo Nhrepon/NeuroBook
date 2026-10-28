@@ -45,7 +45,14 @@ npm run dev          # web (and mobile if configured)
 
 Authorization is defined once in `packages/shared/src/auth.ts` and enforced by `proxy.ts` plus per-route checks. Tenant isolation uses both application scoping and PostgreSQL RLS (`app.tenant_id` set per transaction).
 
-A user is one row per tenant, so the same email can belong to several companies. Every company also has its own **company password** (`tenants.password_hash`), which is what the dashboard switcher asks for — not the person's login password. `POST /api/v1/auth/switch` moves the session to another company; switching requires the `tenant:switch` permission (ADMIN and MANAGER) and the target company's password. A company with no password yet returns `TENANT_PASSWORD_REQUIRED` until an ADMIN sets one in Settings (`tenant:manage`).
+A user is one row per tenant, so the same email can belong to several companies. Every company also has exactly **one company password** (`tenants.password_hash`) — one company, one password — which is what the dashboard switcher asks for, not the person's login password. Every user who switches into that company types the same one, so a change applies to all of them at once. `POST /api/v1/auth/switch` moves the session to another company; switching requires the `tenant:switch` permission (ADMIN and MANAGER) and the target company's password. A company with no password yet returns `TENANT_PASSWORD_REQUIRED`.
+
+Only ADMIN (`tenant:manage`) may change a company password, and it can do so for **any company**:
+
+- `PATCH /api/v1/tenants` with `{ id, password }` — from the dashboard **Companies** page (`/dashboard/companies`), which lists every company with its user count, whether a password is set, a *Change password* action, a *Switch* action and a *Delete* action. The current password is not required, so a lost one can be replaced.
+- `PATCH /api/v1/settings` with `{ currentPassword, newPassword }` — for the company the session is already in, where the current password **is** required (the first set bootstraps a company that has none).
+
+Both audit `tenant.password_change`. Users already switched in keep the session until their 15-minute token expires.
 
 `GET /api/v1/auth/tenants` lists what the switcher offers:
 
@@ -56,7 +63,24 @@ A user is one row per tenant, so the same email can belong to several companies.
 
 Admins manage company users from Users &amp; roles: role, enable/disable, move to another company (`PATCH /api/v1/users` with `tenantId`), and remove.
 
+`POST /api/v1/tenants` (ADMIN) creates a company: name, company code (derived from the name when omitted) and a **required** company password. The creator is added as the company's first **ADMIN** member (`join`, default true), so it can open the company immediately and staff it — the same rule as registration. It seeds the company profile and the default chart of accounts; the dashboard **New company** button opens the same form. A company with no password could never be entered by anyone, which is why one is required here.
+
+`DELETE /api/v1/tenants?id=` (ADMIN) deletes a company **and all of its data** — every tenant-scoped table cascades from `tenants(id)`, so accounts, vouchers, journal lines, invoices, payments, parties, products, stock, users, settings and that company's audit log all go in one statement. Two places expose it, both asking you to type the company code before the button arms: the dashboard **Companies** page, and the **Danger zone** at the bottom of **Settings** (`canManageCompany`) for the company the session is in. It refuses when the company is the only one your email belongs to (you would be locked out), and deleting the company your session is in ends that session — the cookie is cleared and the browser lands on `/login?deleted=1`, which explains what happened. The deletion is audited as `tenant.delete` under a company you still belong to.
+
 `npm run db:multi-tenant` seeds a local fixture for this: `admin@demo.com` ends up in both `demo` and `demo-two` (company password `password123` in each), so its sign-in now needs a company code.
+
+### Audit trail
+
+`GET /api/v1/audit` returns the newest 500 events for the company the session is in, and `proxy.ts` stamps every request with `x-audit-route` plus the resolved user/role so each row can answer *who / what / where* without every route having to pass any of it:
+
+| Field | Meaning |
+| --- | --- |
+| `user_id` + joined email, `actor_role` | Who did it, and the role it held **at the time** (a snapshot — a later role change does not rewrite history). `user_id` is `SET NULL` if the user is later removed, so old rows may name nobody. |
+| `action`, `resource_type`, `resource_id` | What was touched (`voucher.post`, `tenant.delete`, ...). |
+| `before` / `after` | Field-level detail; the console renders it as `role: SALES → MANAGER`. |
+| `ip`, `user_agent`, `route` | Where it came from: client IP (`x-forwarded-for` first hop), the browser / device, and the endpoint that handled it (`POST /api/v1/vouchers`). |
+
+The dashboard **Audit log** (`/dashboard/audit`, `audit:read`) shows those columns and expands a row into the full before/after table, the actor's user id, the company, the raw user-agent string, the endpoint and the event id. Rows written before these columns existed simply show `not captured`.
 
 ## Scripts
 

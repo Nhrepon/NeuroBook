@@ -47,7 +47,20 @@ function forbidden(pathname: string, req: NextRequest) {
 
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
-  if (isPublic(pathname)) return NextResponse.next()
+
+  /**
+   * Hands the handler the endpoint that is about to run, so the audit row it
+   * writes can name it. Public routes (login, register) get it too — they audit
+   * as well, they just have no token to resolve a role from.
+   */
+  function withRoute(base: HeadersInit, extra?: (h: Headers) => void) {
+    const headers = new Headers(base)
+    headers.set('x-audit-route', `${req.method} ${pathname}`)
+    extra?.(headers)
+    return headers
+  }
+
+  if (isPublic(pathname)) return NextResponse.next({ request: { headers: withRoute(req.headers) } })
   if (pathname.startsWith('/_next') || pathname.startsWith('/favicon') || pathname.startsWith('/manifest')) {
     return NextResponse.next()
   }
@@ -73,12 +86,15 @@ export default async function proxy(req: NextRequest) {
   const needed = pagePermission(pathname)
   if (needed && !can(role, needed)) return forbidden(pathname, req)
 
-  const headers = new Headers(req.headers)
-  headers.set('x-tenant-id', String(payload.tid))
-  headers.set('x-user-id', String(payload.sub))
-  headers.set('x-user-role', role)
-  // Never trust tenant identity supplied by the client.
-  headers.delete('x-tenant-scope')
+  const headers = withRoute(req.headers, (h) => {
+    h.set('x-tenant-id', String(payload.tid))
+    h.set('x-user-id', String(payload.sub))
+    h.set('x-user-role', role)
+    const forwarded = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    if (forwarded) h.set('x-forwarded-for', forwarded)
+    // Never trust tenant identity supplied by the client.
+    h.delete('x-tenant-scope')
+  })
 
   return NextResponse.next({ request: { headers } })
 }

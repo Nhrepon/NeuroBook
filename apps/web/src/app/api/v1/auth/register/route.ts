@@ -2,33 +2,11 @@ import { NextRequest } from 'next/server'
 import { db } from '@/db/client'
 import { companySettings, tenants, users } from '@/db/schema'
 import { ensureDefaultChart } from '@/db/chart'
+import { uniqueSlug } from '@/lib/slug'
 import { eq } from 'drizzle-orm'
 import argon2 from 'argon2'
 import { signToken } from '@/lib/jwt'
 import { writeAudit } from '@/lib/audit'
-import { randomBytes } from 'node:crypto'
-
-function baseSlug(input: string) {
-  return (
-    input
-      .toLowerCase()
-      .normalize('NFKD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 48) || 'company'
-  )
-}
-
-async function uniqueSlug(desired: string) {
-  let candidate = baseSlug(desired)
-  for (let i = 0; i < 5; i++) {
-    const [taken] = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, candidate))
-    if (!taken) return candidate
-    candidate = `${baseSlug(desired).slice(0, 43)}-${randomBytes(3).toString('hex')}`
-  }
-  return `company-${randomBytes(6).toString('hex')}`
-}
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)

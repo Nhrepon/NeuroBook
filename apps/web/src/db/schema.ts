@@ -284,6 +284,12 @@ export const auditLog = pgTable('audit_log', {
   before: jsonb('before'),
   after: jsonb('after'),
   ip: text('ip'),
+  /** The role the actor held when it wrote this row — a snapshot, so a later role change does not rewrite history. */
+  actorRole: varchar('actor_role', { length: 32 }),
+  /** Browser / device as reported by the client, for "where did this come from". */
+  userAgent: text('user_agent'),
+  /** `POST /api/v1/vouchers`: the endpoint that performed the write. */
+  route: text('route'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   tenantIdx: index('audit_tenant_idx').on(t.tenantId, t.createdAt),
