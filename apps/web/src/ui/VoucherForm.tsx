@@ -174,11 +174,25 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
     [lines],
   )
 
+  // Lines that are half-finished and would otherwise be dropped silently on save.
+  const lineIssues = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const l of lines) {
+      const debit = minor(l.debit)
+      const credit = minor(l.credit)
+      if (debit > 0 && credit > 0) m.set(l.key, 'Use only one side per line.')
+      else if (!l.accountId && (debit > 0 || credit > 0)) m.set(l.key, 'Pick a ledger account for this amount.')
+      else if (l.accountId && debit === 0 && credit === 0) m.set(l.key, 'Enter a debit or credit amount.')
+    }
+    return m
+  }, [lines])
+
   const problems = useMemo(() => {
     const list: string[] = []
     if (!date) list.push('Pick a voucher date.')
     if (!narration.trim()) list.push('Add a narration so the entry is self-explanatory.')
     if (filledLines.length < 2) list.push('Pick at least two ledger accounts with amounts.')
+    if (lineIssues.size > 0) list.push(`Finish or remove the ${lineIssues.size} highlighted line${lineIssues.size === 1 ? '' : 's'}.`)
     if (lines.some((l) => minor(l.debit) > 0 && minor(l.credit) > 0)) list.push('A line cannot hold both a debit and a credit.')
     if (!balanced && filledLines.length >= 2) {
       list.push(
@@ -189,7 +203,7 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
     }
     if (role && !can(role, voucherTypePermission(type))) list.push('Your role cannot raise this voucher type.')
     return list
-  }, [date, narration, filledLines, lines, balanced, difference, role, type])
+  }, [date, narration, filledLines, lines, lineIssues, balanced, difference, role, type])
 
   function updateLine(key: string, patch: Partial<Line>) {
     setLines((rows) => rows.map((l) => (l.key === key ? { ...l, ...patch } : l)))
@@ -204,6 +218,22 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
 
   function removeLine(key: string) {
     setLines((rows) => (rows.length <= 2 ? rows : rows.filter((l) => l.key !== key)))
+  }
+
+  function clearForm() {
+    setError(null)
+    setNotice(null)
+    setNarration('')
+    setLines([newLine(), newLine()])
+  }
+
+  /** Clears the entry but keeps the date and type, for posting a run of vouchers. */
+  function startAnother() {
+    setDone(null)
+    setError(null)
+    setNotice(null)
+    setNarration('')
+    setLines([newLine(), newLine()])
   }
 
   function balanceLastLine() {
@@ -370,12 +400,13 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
             >
               View voucher
             </Link>
-            <Link
-              href="/dashboard/vouchers/new"
+            <button
+              type="button"
+              onClick={startAnother}
               className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
             >
-              New voucher
-            </Link>
+              Record another
+            </button>
             <Link href="/dashboard/vouchers" className="px-3 py-2 text-sm font-medium text-gray-500 transition hover:text-gray-700">
               Back to list
             </Link>
@@ -387,7 +418,7 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
 
   if (!ready) {
     return (
-      <main className="mx-auto max-w-3xl">
+      <main className="mx-auto max-w-7xl">
         <p className="flex items-center gap-2 text-sm text-gray-500">
           <Loader2 size={15} className="animate-spin" aria-hidden />
           Loading voucher…
@@ -399,7 +430,7 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
   const disabled = busy !== null
 
   return (
-    <main className="mx-auto max-w-4xl">
+    <main className="mx-auto max-w-7xl">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link href="/dashboard/vouchers" className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-gray-500 transition hover:text-gray-700">
@@ -507,7 +538,8 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
               <button
                 type="button"
                 onClick={prefill}
-                disabled={disabled}
+                disabled={disabled || !TEMPLATES[type]}
+                title={TEMPLATES[type] ? 'Fill common ledgers for this voucher type' : 'No starter layout for this type'}
                 className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
               >
                 <Sparkles size={13} aria-hidden />
@@ -529,7 +561,8 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
             <table className="w-full min-w-[680px] border-collapse text-sm">
               <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
                 <tr>
-                  <th className="w-[46%] px-4 py-2 font-medium">Ledger account</th>
+                  <th className="w-8 px-2 py-2 text-right font-medium">#</th>
+                  <th className="w-[44%] px-4 py-2 font-medium">Ledger account</th>
                   <th className="px-2 py-2 font-medium">Reference</th>
                   <th className="w-32 px-2 py-2 text-right font-medium">Debit (৳)</th>
                   <th className="w-32 px-2 py-2 text-right font-medium">Credit (৳)</th>
@@ -539,8 +572,10 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
               <tbody className="divide-y divide-gray-100">
                 {lines.map((line, index) => {
                   const account = accounts.find((a) => a.id === line.accountId)
+                  const issue = lineIssues.get(line.key)
                   return (
-                    <tr key={line.key} className="align-top">
+                    <tr key={line.key} className={`align-top ${issue ? 'bg-amber-50/60' : ''}`}>
+                      <td className="px-2 py-3 text-right text-xs tabular-nums text-gray-400">{index + 1}</td>
                       <td className="px-4 py-2">
                         <AccountPicker
                           id={`line-${index}-account`}
@@ -551,10 +586,17 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
                           placeholder={index === 0 ? 'e.g. Cash' : 'Select ledger account'}
                           onChange={(picked) => updateLine(line.key, { accountId: picked?.id ?? '' })}
                         />
-                        {account && (
-                          <p className="mt-1 pl-1 text-[11px] text-gray-400">
-                            Posts as <span className="font-medium text-gray-500">{account.type}</span>
+                        {issue ? (
+                          <p className="mt-1 flex items-center gap-1 pl-1 text-[11px] text-amber-700">
+                            <AlertTriangle size={11} aria-hidden />
+                            {issue}
                           </p>
+                        ) : (
+                          account && (
+                            <p className="mt-1 pl-1 text-[11px] text-gray-400">
+                              Posts as <span className="font-medium text-gray-500">{account.type}</span>
+                            </p>
+                          )
                         )}
                       </td>
                       <td className="px-2 py-2">
@@ -618,7 +660,7 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
               </tbody>
               <tfoot className="border-t border-gray-200 bg-gray-50 text-sm">
                 <tr>
-                  <td colSpan={2} className="px-4 py-2.5 text-xs text-gray-500">
+                  <td colSpan={3} className="px-4 py-2.5 text-xs text-gray-500">
                     <span className="inline-flex items-center gap-1.5">
                       <Scale size={13} aria-hidden />
                       {balanced ? (
@@ -694,6 +736,14 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
           >
             {busy === 'draft' ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Save size={15} aria-hidden />}
             {busy === 'draft' ? 'Saving…' : editMode ? 'Save draft' : 'Save as draft'}
+          </button>
+          <button
+            type="button"
+            onClick={clearForm}
+            disabled={disabled}
+            className="rounded-lg px-3 py-2.5 text-sm font-semibold text-gray-500 transition hover:text-gray-700 disabled:opacity-50"
+          >
+            Clear
           </button>
           <span className="ml-auto hidden text-xs text-gray-400 sm:block">
             Ctrl+Enter posts · Alt+A adds a line

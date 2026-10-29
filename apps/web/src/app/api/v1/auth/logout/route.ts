@@ -1,7 +1,10 @@
-import { NextRequest } from 'next/server'
+import { logout } from '@/controllers/authController'
+import { clearSessionCookie } from '@/lib/api/respond'
 
-export async function POST(_req: NextRequest) {
-  const res = Response.json({ data: { revoked: true } })
-  res.headers.set('Set-Cookie', 'access_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0')
+export const dynamic = 'force-dynamic'
+
+export async function POST() {
+  const res = Response.json({ data: await logout() })
+  res.headers.set('Set-Cookie', clearSessionCookie())
   return res
 }

@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { randomBytes } from 'node:crypto'
-import { db } from '@/db/client'
-import { tenants } from '@/db/schema'
+import { db } from '@/lib/db/client'
+import { tenants } from '@/lib/db/schema'
 import { baseSlug } from './company-slug'
 
 export { baseSlug }

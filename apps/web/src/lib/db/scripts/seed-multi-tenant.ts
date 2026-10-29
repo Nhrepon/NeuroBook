@@ -1,8 +1,8 @@
 import argon2 from 'argon2'
 import { and, eq } from 'drizzle-orm'
-import { db } from './client'
-import { companySettings, tenants, users } from './schema'
-import { ensureDefaultChart } from './chart'
+import { db } from '../client'
+import { companySettings, tenants, users } from '../schema'
+import { ensureDefaultChart } from '../chart'
 
 /**
  * Adds one shared login to a second company so multi-tenant behaviour (company

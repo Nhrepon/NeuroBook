@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
-import { db } from './client'
-import { companySettings, tenants } from './schema'
+import { db } from '../client'
+import { companySettings, tenants } from '../schema'
 
 /**
  * One-off repair for the era when Settings only wrote `company_settings.company_name`

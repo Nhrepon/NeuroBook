@@ -7,13 +7,13 @@
     "build": "next build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "db:seed": "tsx src/db/seed.ts",
-    "db:chart": "tsx src/db/backfill-chart.ts",
-    "db:multi-tenant": "tsx src/db/seed-multi-tenant.ts",
-    "db:sync-names": "tsx src/db/sync-company-names.ts",
-    "db:rls": "tsx src/db/apply-rls.ts",
+    "db:seed": "tsx src/lib/db/scripts/seed.ts",
+    "db:chart": "tsx src/lib/db/scripts/backfill-chart.ts",
+    "db:multi-tenant": "tsx src/lib/db/scripts/seed-multi-tenant.ts",
+    "db:sync-names": "tsx src/lib/db/scripts/sync-company-names.ts",
+    "db:rls": "tsx src/lib/db/scripts/apply-rls.ts",
     "db:studio": "drizzle-kit studio",
-    "db:setup": "drizzle-kit push --force && tsx src/db/apply-rls.ts && tsx src/db/seed.ts"
+    "db:setup": "drizzle-kit push --force && tsx src/lib/db/scripts/apply-rls.ts && tsx src/lib/db/scripts/seed.ts"
   },
   "dependencies": {
     "@neurobook/shared": "*",

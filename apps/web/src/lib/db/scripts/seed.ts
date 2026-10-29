@@ -1,8 +1,8 @@
 import argon2 from 'argon2'
 import { and, eq } from 'drizzle-orm'
-import { db } from './client'
-import { tenants, users } from './schema'
-import { ensureDefaultChart } from './chart'
+import { db } from '../client'
+import { tenants, users } from '../schema'
+import { ensureDefaultChart } from '../chart'
 
 async function main() {
   let [tenant] = await db.select().from(tenants).where(eq(tenants.slug, 'demo'))

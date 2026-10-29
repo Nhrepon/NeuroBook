@@ -160,7 +160,7 @@ export default function VoucherDetailPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-4xl">
+      <main className="mx-auto max-w-7xl">
         <p className="flex items-center gap-2 text-sm text-gray-500">
           <Loader2 size={15} className="animate-spin" aria-hidden />
           Loading voucher…
@@ -181,7 +181,7 @@ export default function VoucherDetailPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl">
+    <main className="mx-auto max-w-7xl">
       <Link href="/dashboard/vouchers" className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-gray-500 transition hover:text-gray-700">
         <ArrowLeft size={13} aria-hidden />
         Vouchers

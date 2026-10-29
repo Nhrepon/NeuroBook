@@ -1,8 +1,6 @@
 import { NextRequest } from 'next/server'
-import { invoiceLines, invoices, parties } from '@/db/schema'
-import { requireScope } from '@/db/scope'
-import { withTenant } from '@/db/tenant'
-import { and, eq } from 'drizzle-orm'
+import { getInvoiceDocument } from '@/controllers/invoiceController'
+import { toErrorResponse } from '@/controllers/errors'
 import { formatTaka } from '@neurobook/shared'
 import { Document, Page, Text, View, StyleSheet, renderToBuffer } from '@react-pdf/renderer'
 
@@ -29,21 +27,13 @@ const money = (minor: number) => formatTaka(minor).replace('৳', 'BDT ')
 
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params
-  const scope = await requireScope()
 
-  const data = await withTenant(scope.tenantId, async (tx) => {
-    const [invoice] = await tx.select().from(invoices).where(and(eq(invoices.id, id), eq(invoices.tenantId, scope.tenantId)))
-    if (!invoice) return null
-    let customer: typeof parties.$inferSelect | null = null
-    if (invoice.customerId) {
-      const [c] = await tx.select().from(parties).where(eq(parties.id, invoice.customerId))
-      customer = c ?? null
-    }
-    const lines = await tx.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, invoice.id))
-    return { invoice, customer, lines }
-  })
-
-  if (!data) return Response.json({ error: { code: 'NOT_FOUND', message: 'not found' } }, { status: 404 })
+  let data: Awaited<ReturnType<typeof getInvoiceDocument>>
+  try {
+    data = await getInvoiceDocument(id)
+  } catch (error) {
+    return toErrorResponse(error)
+  }
   const { invoice, customer, lines } = data
 
   const taxable = invoice.total - invoice.vat

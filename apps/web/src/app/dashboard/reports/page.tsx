@@ -41,7 +41,7 @@ export default function ReportsPage() {
     type === 'trial-balance' && data?.totals && data.totals.debit === data.totals.credit && data.totals.debit > 0
 
   return (
-    <main className="mx-auto max-w-4xl">
+    <main className="mx-auto max-w-7xl">
       <header className="mb-5">
         <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
           <BarChart3 size={22} className="text-blue-600" aria-hidden />

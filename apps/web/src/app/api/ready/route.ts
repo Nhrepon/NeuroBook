@@ -1,12 +1,8 @@
-import { db } from '@/db/client'
-import { sql } from 'drizzle-orm'
-import { ok, err } from '@/lib/envelope'
+import { checkReady } from '@/controllers/readyController'
+import { run } from '@/lib/api/respond'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  try {
-    await db.execute(sql`SELECT 1`)
-    return ok({ status: 'ready' })
-  } catch (e: any) {
-    return err({ code: 'SERVICE_UNAVAILABLE', message: e?.message ?? 'db unavailable' }, 503)
-  }
+  return run(checkReady)
 }

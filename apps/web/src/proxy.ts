@@ -2,6 +2,9 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { jwtVerify } from 'jose'
 import { can, canAny, normalizeRole } from '@neurobook/shared'
 import { pagePermission, requiredPermissions } from '@/lib/rbac'
+import { db } from '@/lib/db/client'
+import { users } from '@/lib/db/schema'
+import { eq } from 'drizzle-orm'
 
 const secret = new TextEncoder().encode(process.env.JWT_SECRET ?? 'dev-secret-change-me-please-32-chars')
 
@@ -45,6 +48,18 @@ function forbidden(pathname: string, req: NextRequest) {
   return NextResponse.redirect(url)
 }
 
+function sessionRevoked(pathname: string, req: NextRequest) {
+  if (isApi(pathname)) {
+    return NextResponse.json(
+      { error: { code: 'SESSION_REVOKED', message: 'Your session is no longer valid. Sign in again.' } },
+      { status: 401 },
+    )
+  }
+  const res = NextResponse.redirect(new URL('/login?expired=1', req.url))
+  res.headers.set('Set-Cookie', 'access_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0')
+  return res
+}
+
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
@@ -68,7 +83,7 @@ export default async function proxy(req: NextRequest) {
   const token = req.cookies.get('access_token')?.value ?? req.headers.get('authorization')?.replace(/^Bearer\s+/i, '')
   if (!token) return unauthorized(pathname, req)
 
-  let payload: { sub?: unknown; tid?: unknown; role?: unknown }
+  let payload: { sub?: unknown; tid?: unknown; role?: unknown; ver?: unknown }
   try {
     payload = (await jwtVerify(token, secret)).payload
   } catch {
@@ -76,7 +91,32 @@ export default async function proxy(req: NextRequest) {
   }
 
   if (!payload.sub || !payload.tid) return unauthorized(pathname, req)
-  const role = normalizeRole(payload.role)
+
+  /**
+   * The token is only half the story: the session it claims has to still exist.
+   * The user must be active, still belong to the company the token names (a move
+   * ends the session), and carry the same token generation the account is on, so
+   * a role change, deactivation or password reset kills every live token instead
+   * of letting it run to its 15-minute expiry. The role is taken from the row, not
+   * the token, so a demotion takes effect at once.
+   */
+  const sub = String(payload.sub)
+  const tid = String(payload.tid)
+  const [session] = await db
+    .select({ role: users.role, active: users.active, tenantId: users.tenantId, tokenVersion: users.tokenVersion })
+    .from(users)
+    .where(eq(users.id, sub))
+
+  if (
+    !session ||
+    !session.active ||
+    session.tenantId !== tid ||
+    session.tokenVersion !== Number(payload.ver ?? -1)
+  ) {
+    return sessionRevoked(pathname, req)
+  }
+
+  const role = normalizeRole(session.role)
 
   // Role-based enforcement for API mutations.
   const apiPermissions = requiredPermissions(req.method, pathname)
@@ -87,8 +127,8 @@ export default async function proxy(req: NextRequest) {
   if (needed && !can(role, needed)) return forbidden(pathname, req)
 
   const headers = withRoute(req.headers, (h) => {
-    h.set('x-tenant-id', String(payload.tid))
-    h.set('x-user-id', String(payload.sub))
+    h.set('x-tenant-id', tid)
+    h.set('x-user-id', sub)
     h.set('x-user-role', role)
     const forwarded = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
     if (forwarded) h.set('x-forwarded-for', forwarded)

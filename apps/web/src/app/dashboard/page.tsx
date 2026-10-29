@@ -52,7 +52,7 @@ export default function DashboardPage() {
   ]
 
   return (
-    <main className="mx-auto max-w-5xl space-y-5">
+    <main className="mx-auto max-w-7xl space-y-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-900">Dashboard</h1>

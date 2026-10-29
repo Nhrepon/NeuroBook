@@ -72,7 +72,7 @@ export default function VoucherTypeLedger({ types, primaryType, title, descripti
   const newLabel = newLabelProp ?? `New ${voucherTypeLabel(primaryType).toLowerCase()}`
 
   return (
-    <main className="mx-auto max-w-5xl">
+    <main className="mx-auto max-w-7xl">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">

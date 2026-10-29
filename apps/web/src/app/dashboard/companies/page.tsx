@@ -19,11 +19,11 @@ const control =
   'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500'
 
 /**
- * Every company on the server. ADMIN only.
+ * Companies this admin's email belongs to. ADMIN only.
  *
  * One password per company, shared by everyone who switches into it, so this page
- * is where an operator rotates a password it does not know, and where it enters a
- * company it is not a member of.
+ * is where an operator rotates a password it does not know, or switches into one
+ * of its companies.
  */
 export default function CompaniesPage() {
   const router = useRouter()
@@ -175,16 +175,16 @@ export default function CompaniesPage() {
   if (loading) return <main className="p-6">Loading companies...</main>
 
   return (
-    <main className="mx-auto max-w-5xl space-y-5">
+    <main className="mx-auto max-w-7xl space-y-5">
       <header>
         <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
           <Building2 size={22} className="text-blue-600" aria-hidden />
           Companies
         </h1>
         <p className="mt-1 text-sm text-gray-500">
-          Every company on this server. Each one has exactly one company password, shared by everyone who switches into
-          it — change it here and all of that company&apos;s users get the new one. Only admins can change a password or
-          enter a company they do not belong to.
+          Companies your email belongs to. Each one has exactly one company password, shared by everyone who switches
+          into it — change it here and all of that company&apos;s users get the new one. Only admins can change a
+          password.
         </p>
       </header>
 

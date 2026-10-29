@@ -13,11 +13,9 @@ import { useMe, type Me } from './useMe'
 export default function TenantBadge({
   compact = false,
   me: given,
-  visiting = false,
 }: {
   compact?: boolean
   me?: Me
-  visiting?: boolean
 }) {
   const fetched = useMe(!given)
   const me = given ?? fetched
@@ -44,11 +42,6 @@ export default function TenantBadge({
       </span>
       {me?.tenantSlug && (
         <span className="rounded-md bg-gray-100 px-2 py-0.5 font-mono text-xs text-gray-600">{me.tenantSlug}</span>
-      )}
-      {visiting && (
-        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200">
-          Admin access
-        </span>
       )}
       {me && (
         <span className="text-xs text-gray-500">

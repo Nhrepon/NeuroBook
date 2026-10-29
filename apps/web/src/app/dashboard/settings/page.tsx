@@ -196,7 +196,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl space-y-6">
+    <main className="mx-auto max-w-7xl space-y-6">
       <header>
         <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
           <SettingsIcon size={22} className="text-blue-600" aria-hidden />

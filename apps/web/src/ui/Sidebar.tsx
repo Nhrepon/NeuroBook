@@ -6,7 +6,7 @@ import LogoutButton from './LogoutButton'
 import TenantBadge from './TenantBadge'
 import {
   ChevronsLeft, ChevronsRight, LayoutDashboard, FileText, PlusCircle, BookOpen, Receipt, Users, Package,
-  ShoppingCart, TrendingUp, BarChart3, Landmark, Percent, Settings, ScrollText, UserCog, Building2,
+  ShoppingCart, TrendingUp, BarChart3, Landmark, Percent, Settings, ScrollText, UserCog, Building2, Tags,
 } from 'lucide-react'
 import { ROLE_LABELS, can, type Permission, type Role } from '@neurobook/shared'
 
@@ -32,6 +32,7 @@ const menu: MenuItem[] = [
   { href: '/dashboard/invoices', label: 'Invoices', icon: Receipt, permission: ['invoice:write'] },
   { href: '/dashboard/parties', label: 'Parties', icon: Users, permission: ['party:write'] },
   { href: '/dashboard/products', label: 'Products', icon: Package, permission: ['product:write'] },
+  { href: '/dashboard/categories', label: 'Product Categories', icon: Tags, permission: ['product:write'] },
   { href: '/dashboard/purchases', label: 'Purchases', icon: ShoppingCart, permission: ['purchase:write'] },
   { href: '/dashboard/sales', label: 'Sales', icon: TrendingUp, permission: ['sales:write'] },
   { href: '/dashboard/payments', label: 'Payments', icon: ShoppingCart, permission: ['payment:write'] },

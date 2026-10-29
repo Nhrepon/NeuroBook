@@ -25,6 +25,7 @@ export function requiredPermissions(method: string, pathname: string): Permissio
   if (pathname.startsWith('/api/v1/accounts')) return ['account:write']
   if (pathname.startsWith('/api/v1/parties')) return ['party:write']
   if (pathname.startsWith('/api/v1/products')) return ['product:write']
+  if (pathname.startsWith('/api/v1/stock')) return ['stock:write']
   return null
 }
 

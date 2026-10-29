@@ -22,6 +22,13 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   role: varchar('role', { length: 32 }).notNull().default('VIEWER'),
   active: boolean('active').notNull().default(true),
+  /**
+   * Bumped whenever the account's credentials or access change (password reset,
+   * deactivation, role change, move to another company). Every token carries the
+   * version it was signed with, so a bump invalidates all of that user's live
+   * tokens instead of letting them run to their 15-minute expiry.
+   */
+  tokenVersion: integer('token_version').notNull().default(0),
   totpSecret: text('totp_secret'),
   totpEnabled: boolean('totp_enabled').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
@@ -149,21 +156,45 @@ export const parties = pgTable('parties', {
   typeCheck: check('parties_type_check', sql`${t.type} IN ('CUSTOMER','SUPPLIER','BOTH')`),
 }))
 
+export const categories = pgTable('categories', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  nameUnique: uniqueIndex('categories_tenant_name_uidx').on(t.tenantId, t.name),
+}))
+
 export const products = pgTable('products', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
-  sku: varchar('sku', { length: 64 }),
+  categoryId: uuid('category_id').references(() => categories.id, { onDelete: 'set null' }),
+  /** Default unit price (excluding VAT), in minor units. Used to auto-fill invoice lines. */
+  price: integer('price').notNull().default(0),
   unit: text('unit'),
   active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 })
+
+export const productSkus = pgTable('product_skus', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
+  productId: uuid('product_id').notNull().references(() => products.id, { onDelete: 'cascade' }),
+  sku: varchar('sku', { length: 64 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  skuUnique: uniqueIndex('product_skus_tenant_sku_uidx').on(t.tenantId, t.sku),
+}))
 
 export const invoices = pgTable('invoices', {
   id: uuid('id').defaultRandom().primaryKey(),
   tenantId: uuid('tenant_id').notNull().references(() => tenants.id, { onDelete: 'cascade' }),
   voucherId: uuid('voucher_id').references(() => vouchers.id, { onDelete: 'set null' }),
   customerId: uuid('customer_id').references(() => parties.id, { onDelete: 'set null' }),
+  /** 'sale' (customer invoice) or 'purchase' (supplier bill). */
+  type: varchar('type', { length: 16 }).notNull().default('sale'),
   number: varchar('number', { length: 64 }),
   date: timestamp('date', { withTimezone: true }).notNull(),
   total: integer('total').notNull().default(0),

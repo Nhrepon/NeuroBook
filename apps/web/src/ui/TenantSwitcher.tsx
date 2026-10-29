@@ -8,18 +8,16 @@ export interface Company {
   name: string
   slug: string
   role: string
-  /** False when an ADMIN is being offered a company it does not belong to. */
-  member: boolean
   current: boolean
 }
 
 /**
- * Switches the session to another company.
+ * Switches the session to another company this email belongs to.
  *
- * The list is resolved on the server (the panel decides who may see it). For an
- * ADMIN it includes every company on the server; the target company's password is
- * verified by `POST /api/v1/auth/switch` before a new token is issued. Each
- * company keeps its own password.
+ * The list is resolved on the server (the panel decides who may see it). Only
+ * companies where the signed-in email has a membership row are offered. The
+ * target company's password is verified by `POST /api/v1/auth/switch` before a
+ * new token is issued. Each company keeps its own password.
  */
 export default function TenantSwitcher({ companies }: { companies: Company[] }) {
   const [open, setOpen] = useState(false)
@@ -91,8 +89,7 @@ export default function TenantSwitcher({ companies }: { companies: Company[] }) 
             {!target ? (
               <>
                 <p className="mt-1 text-xs text-gray-500">
-                  Pick the company this session should use. A company marked <em>Admin access</em> is one you do not
-                  belong to — entering it needs that company&apos;s password.
+                  Pick the company this session should use. Only companies your email belongs to are listed.
                 </p>
                 <ul className="mt-3 max-h-72 space-y-1.5 overflow-y-auto">
                   {companies.map((company) => (
@@ -117,15 +114,10 @@ export default function TenantSwitcher({ companies }: { companies: Company[] }) 
                             {company.name}
                           </span>
                           <span className="mt-0.5 block font-mono text-[11px] text-gray-400">
-                            {company.slug} · {company.member ? company.role : 'not a member'}
+                            {company.slug} · {company.role}
                           </span>
                         </span>
                         <span className="flex shrink-0 items-center gap-1">
-                          {!company.member && (
-                            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-800 ring-1 ring-inset ring-amber-200">
-                              Admin access
-                            </span>
-                          )}
                           {company.current && (
                             <span className="flex items-center gap-1 text-xs font-medium text-blue-700">
                               <Check size={13} aria-hidden />

@@ -1,5 +1,6 @@
-import { ok } from '@/lib/envelope'
+import { getHealth } from '@/controllers/healthController'
+import { run } from '@/lib/api/respond'
 
 export async function GET() {
-  return ok({ status: 'ok', timestamp: new Date().toISOString() })
+  return run(getHealth)
 }

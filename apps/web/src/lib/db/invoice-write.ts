@@ -1,6 +1,6 @@
 import { and, eq, sql } from 'drizzle-orm'
-import { parties } from '@/db/schema'
-import type { TenantTx } from '@/db/tenant'
+import { parties } from '@/lib/db/schema'
+import type { TenantTx } from '@/lib/db/tenant'
 import { z } from 'zod'
 
 export const InvoiceLineSchema = z.object({
@@ -65,6 +65,7 @@ export async function resolveCustomerId(
   tenantId: string,
   customerId: string | undefined,
   customerName: string | undefined,
+  partyType: 'CUSTOMER' | 'SUPPLIER' = 'CUSTOMER',
 ): Promise<string | undefined> {
   if (customerId) return customerId
   const name = customerName?.trim()
@@ -79,7 +80,7 @@ export async function resolveCustomerId(
 
   const [created] = await tx
     .insert(parties)
-    .values({ tenantId, name, type: 'CUSTOMER' })
+    .values({ tenantId, name, type: partyType })
     .returning({ id: parties.id })
   return created.id
 }

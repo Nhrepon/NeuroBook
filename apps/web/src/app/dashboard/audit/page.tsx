@@ -204,7 +204,7 @@ export default function AuditPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl">
+    <main className="mx-auto max-w-7xl">
       <header className="mb-5">
         <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
           <ScrollText size={22} className="text-blue-600" aria-hidden />

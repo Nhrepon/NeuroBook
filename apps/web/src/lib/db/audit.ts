@@ -1,6 +1,6 @@
-import { db } from '@/db/client'
-import type { TenantTx } from '@/db/tenant'
-import { auditLog } from '@/db/schema'
+import { db } from '@/lib/db/client'
+import type { TenantTx } from '@/lib/db/tenant'
+import { auditLog } from '@/lib/db/schema'
 import { headers } from 'next/headers'
 
 export interface AuditEntry {

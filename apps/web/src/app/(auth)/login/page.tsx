@@ -19,9 +19,11 @@ export default function LoginPage() {
   const [notice, setNotice] = useState<string | null>(null)
 
   useEffect(() => {
-    // Reached after deleting the company the session was working in.
-    if (new URLSearchParams(window.location.search).get('deleted')) {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('deleted')) {
       setNotice('That company and all of its data were deleted. Sign in with another company to continue.')
+    } else if (params.get('expired')) {
+      setNotice('Your session is no longer valid. Sign in again to continue.')
     }
   }, [])
 

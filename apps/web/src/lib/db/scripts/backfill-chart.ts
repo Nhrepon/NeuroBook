@@ -1,6 +1,6 @@
-import { db } from './client'
-import { tenants } from './schema'
-import { ensureDefaultChart } from './chart'
+import { db } from '../client'
+import { tenants } from '../schema'
+import { ensureDefaultChart } from '../chart'
 
 /**
  * Backfills the default chart of accounts for every existing tenant.

@@ -39,6 +39,14 @@ export default function PartiesPage() {
   const [address, setAddress] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [editType, setEditType] = useState<PartyType>('CUSTOMER')
+  const [editPhone, setEditPhone] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editAddress, setEditAddress] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<'ALL' | PartyType>('ALL')
 
@@ -113,8 +121,64 @@ export default function PartiesPage() {
     }
   }
 
+  function startEdit(row: Party) {
+    setEditingId(row.id)
+    setEditName(row.name)
+    setEditType(row.type)
+    setEditPhone(row.phone ?? '')
+    setEditEmail(row.email ?? '')
+    setEditAddress(row.address ?? '')
+  }
+
+  async function saveEdit() {
+    if (!editingId || !editName.trim()) return
+    setEditSaving(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/v1/parties', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingId,
+          name: editName.trim(),
+          type: editType,
+          phone: editPhone.trim() === '' ? null : editPhone.trim(),
+          email: editEmail.trim() === '' ? null : editEmail.trim(),
+          address: editAddress.trim() === '' ? null : editAddress.trim(),
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        setError(body?.error?.message ?? 'Could not save the party.')
+        return
+      }
+      setEditingId(null)
+      await load()
+    } catch {
+      setError('Network error. Please try again.')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  async function deleteParty(id: string, name: string) {
+    if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return
+    setError(null)
+    try {
+      const res = await fetch(`/api/v1/parties?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        setError(body?.error?.message ?? 'Could not delete the party.')
+        return
+      }
+      await load()
+    } catch {
+      setError('Network error. Please try again.')
+    }
+  }
+
   return (
-    <main className="mx-auto max-w-5xl">
+    <main className="mx-auto max-w-7xl">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
@@ -197,6 +261,38 @@ export default function PartiesPage() {
         </form>
       )}
 
+      {editingId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+          <div className="w-full max-w-lg rounded-xl border border-gray-200 bg-white p-4 shadow-xl sm:p-5">
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="text-sm font-semibold text-gray-900">Edit party</h2>
+              <button type="button" onClick={() => setEditingId(null)} aria-label="Close" className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><X size={16} aria-hidden /></button>
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <Field label="Name" required value={editName} onChange={(e) => setEditName(e.target.value)} />
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">Type</label>
+                <select value={editType} onChange={(e) => setEditType(e.target.value as PartyType)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25">
+                  <option value="CUSTOMER">Customer</option>
+                  <option value="SUPPLIER">Supplier</option>
+                  <option value="BOTH">Customer &amp; supplier</option>
+                </select>
+              </div>
+              <Field label="Phone" optional value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
+              <Field label="Email" optional type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+              <Field label="Address" optional value={editAddress} onChange={(e) => setEditAddress(e.target.value)} className="sm:col-span-2" />
+            </div>
+            <div className="mt-5 flex items-center gap-3 border-t border-gray-100 pt-4">
+              <button type="submit" onClick={saveEdit} disabled={!editName.trim() || editSaving} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                {editSaving && <Loader2 size={15} className="animate-spin" aria-hidden />}
+                {editSaving ? 'Saving...' : 'Save changes'}
+              </button>
+              <button type="button" onClick={() => setEditingId(null)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {error && <FormAlert message={error} />}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -232,12 +328,13 @@ export default function PartiesPage() {
                 <th className="px-4 py-2.5 font-medium">Type</th>
                 <th className="px-4 py-2.5 font-medium">Phone</th>
                 <th className="px-4 py-2.5 font-medium">Email</th>
+                <th className="px-4 py-2.5 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
                     <span className="inline-flex items-center gap-2">
                       <Loader2 size={15} className="animate-spin" aria-hidden />
                       Loading parties...
@@ -248,7 +345,7 @@ export default function PartiesPage() {
 
               {!loading && visible.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-10 text-center text-gray-500">
+                  <td colSpan={5} className="px-4 py-10 text-center text-gray-500">
                     {rows.length === 0 ? 'No parties yet. Create one to bill customers or record supplier bills.' : 'No parties match this search.'}
                   </td>
                 </tr>
@@ -267,6 +364,14 @@ export default function PartiesPage() {
                       {row.phone || <span className="text-gray-400">—</span>}
                     </td>
                     <td className="px-4 py-2.5 text-gray-700">{row.email || <span className="text-gray-400">—</span>}</td>
+                    <td className="px-4 py-2.5 text-right">
+                      {canWrite && (
+                        <div className="flex items-center justify-end gap-3">
+                          <button type="button" onClick={() => startEdit(row)} className="text-xs font-semibold text-blue-600 hover:underline">Edit</button>
+                          <button type="button" onClick={() => deleteParty(row.id, row.name)} className="text-xs font-semibold text-red-600 hover:underline">Delete</button>
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
             </tbody>

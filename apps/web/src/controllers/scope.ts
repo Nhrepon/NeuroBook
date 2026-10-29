@@ -28,10 +28,3 @@ export async function requirePermission(permission: Permission): Promise<Request
   if (!can(scope.role, permission)) throw new ForbiddenError()
   return scope
 }
-
-export function forbiddenResponse() {
-  return Response.json(
-    { error: { code: 'FORBIDDEN', message: 'You do not have permission to perform this action' } },
-    { status: 403 },
-  )
-}

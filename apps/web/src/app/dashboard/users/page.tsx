@@ -138,7 +138,7 @@ export default function UsersPage() {
   const canManageTenants = me ? can(me.role, 'tenant:manage') : false
 
   return (
-    <main className="mx-auto max-w-5xl space-y-5">
+    <main className="mx-auto max-w-7xl space-y-5">
       <header>
         <h1 className="text-2xl font-bold tracking-tight text-gray-900">Users &amp; roles</h1>
         <p className="mt-1 text-sm text-gray-500">

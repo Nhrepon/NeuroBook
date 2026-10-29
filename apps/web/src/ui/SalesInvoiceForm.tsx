@@ -204,7 +204,7 @@ export default function SalesInvoiceForm() {
   const disabled = busy !== null
 
   return (
-    <main className="mx-auto max-w-4xl">
+    <main className="mx-auto max-w-7xl">
       <header className="mb-5">
         <Link href="/dashboard/sales" className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-gray-500 transition hover:text-gray-700">
           <ArrowLeft size={13} aria-hidden />

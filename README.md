@@ -47,17 +47,17 @@ Authorization is defined once in `packages/shared/src/auth.ts` and enforced by `
 
 A user is one row per tenant, so the same email can belong to several companies. Every company also has exactly **one company password** (`tenants.password_hash`) — one company, one password — which is what the dashboard switcher asks for, not the person's login password. Every user who switches into that company types the same one, so a change applies to all of them at once. `POST /api/v1/auth/switch` moves the session to another company; switching requires the `tenant:switch` permission (ADMIN and MANAGER) and the target company's password. A company with no password yet returns `TENANT_PASSWORD_REQUIRED`.
 
-Only ADMIN (`tenant:manage`) may change a company password, and it can do so for **any company**:
+Only ADMIN (`tenant:manage`) may change a company password, and only for a company its email belongs to. A company whose email has no membership row is a 404 to that admin, exactly as if it did not exist — there is no cross-tenant operator access any more.
 
-- `PATCH /api/v1/tenants` with `{ id, password }` — from the dashboard **Companies** page (`/dashboard/companies`), which lists every company with its user count, whether a password is set, a *Change password* action, a *Switch* action and a *Delete* action. The current password is not required, so a lost one can be replaced.
+- `PATCH /api/v1/tenants` with `{ id, password }` — from the dashboard **Companies** page (`/dashboard/companies`), which lists the companies this admin belongs to, with user counts, whether a password is set, a *Change password* action, a *Switch* action and a *Delete* action. The current password is not required, so a lost one can be replaced.
 - `PATCH /api/v1/settings` with `{ currentPassword, newPassword }` — for the company the session is already in, where the current password **is** required (the first set bootstraps a company that has none).
 
 Both audit `tenant.password_change`. Users already switched in keep the session until their 15-minute token expires.
 
-`GET /api/v1/auth/tenants` lists what the switcher offers:
+`GET /api/v1/auth/tenants` lists what the switcher offers — exactly the companies where the signed-in email has an active membership row. There is no admin shortcut to a company it does not belong to:
 
-- MANAGER gets the companies its email belongs to.
-- ADMIN also gets **every other company on the server**, marked `member: false`. Entering one still needs that company's password and does not create a membership row; the visiting session carries the ADMIN role, so it has full access to that company and every action is audited under the same user id (`auth.tenant_switch` with `as: "admin"`). The dashboard shows an **Admin access** chip while visiting.
+- MANAGER and ADMIN get the companies their email belongs to, with the role assigned there.
+- A company is entered by its company password; the visiting session carries the membership's role. `auth.tenant_switch` is audited with `as: "member"`.
 
 **The company name lives on `tenants.name`** and is what the sidebar badge, the switcher, login and `/auth/me` read. Settings writes both `tenants.name` and `company_settings.company_name` (the latter is what invoices and the PDF print), and audits the rename as `tenant.rename`. `npm run db:sync-names` repairs rows written before this rule existed.
 
@@ -81,6 +81,12 @@ Admins manage company users from Users &amp; roles: role, enable/disable, move t
 | `ip`, `user_agent`, `route` | Where it came from: client IP (`x-forwarded-for` first hop), the browser / device, and the endpoint that handled it (`POST /api/v1/vouchers`). |
 
 The dashboard **Audit log** (`/dashboard/audit`, `audit:read`) shows those columns and expands a row into the full before/after table, the actor's user id, the company, the raw user-agent string, the endpoint and the event id. Rows written before these columns existed simply show `not captured`.
+
+### Session revocation
+
+Every token carries a `ver` claim — the user row's `token_version` at sign-in. `proxy.ts` re-reads that row on every request and rejects the request (`SESSION_REVOKED`, 401 for APIs; `/login?expired=1` for pages) when the user is gone, inactive, no longer belongs to the company the token names, or its `token_version` no longer matches. The role is taken from the row, not the token, so a demotion takes effect at once.
+
+`PATCH /api/v1/users` bumps `token_version` (and therefore kills every live token for that account) when the role changes, the account is activated or deactivated, the password is reset, or the membership is moved to another company. Company-password rotation and logout do **not** bump — sessions keep working until their 15-minute expiry.
 
 ## Scripts
 
