@@ -62,6 +62,10 @@ async function main() {
     `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO ${q(APP_ROLE)};`,
   )
 
+  // The audit trail is append-only: the app may insert and read it, never rewrite
+  // or erase history. RLS alone does not stop UPDATE/DELETE, so revoke them.
+  await sql.unsafe(`REVOKE UPDATE, DELETE ON "audit_log" FROM ${q(APP_ROLE)};`)
+
   for (const table of TENANT_TABLES) {
     await sql.unsafe(`ALTER TABLE ${q(table)} ENABLE ROW LEVEL SECURITY;`)
     await sql.unsafe(`DROP POLICY IF EXISTS tenant_isolation ON ${q(table)};`)
@@ -80,6 +84,23 @@ async function main() {
       USING (id = nullif(current_setting('app.tenant_id', true), '')::uuid)
       WITH CHECK (id = nullif(current_setting('app.tenant_id', true), '')::uuid);
   `)
+
+  // A company code is set once at creation and is how people identify the
+  // company. Enforce immutability in the database, not just by convention.
+  await sql.unsafe(`
+    CREATE OR REPLACE FUNCTION tenants_code_immutable() RETURNS trigger AS $$
+    BEGIN
+      IF NEW.code IS DISTINCT FROM OLD.code THEN
+        RAISE EXCEPTION 'tenants.code is immutable';
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+  `)
+  await sql.unsafe(`DROP TRIGGER IF EXISTS tenants_code_immutable ON "tenants";`)
+  await sql.unsafe(
+    `CREATE TRIGGER tenants_code_immutable BEFORE UPDATE ON "tenants" FOR EACH ROW EXECUTE FUNCTION tenants_code_immutable();`,
+  )
 
   const check = await sql.unsafe<{ relname: string; relrowsecurity: boolean }[]>(
     `SELECT relname, relrowsecurity FROM pg_class c

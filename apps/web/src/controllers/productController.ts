@@ -1,6 +1,6 @@
 import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
-import { categories, productSkus, products } from '@/lib/db/schema'
+import { categories, invoiceLines, productSkus, products, stockMovements } from '@/lib/db/schema'
 import { withTenant } from '@/lib/db/tenant'
 import { writeAudit } from '@/lib/db/audit'
 import { requireScope } from '@/controllers/scope'
@@ -8,10 +8,14 @@ import { badRequest, conflict, notFound } from '@/controllers/errors'
 
 const ItemSchema = z.object({
   name: z.string().min(1),
+  nameBn: z.string().trim().optional(),
+  code: z.string().trim().min(1).optional(),
   categoryId: z.string().uuid().optional(),
   category: z.string().trim().min(1).optional(),
   unit: z.string().trim().optional(),
   price: z.number().int().nonnegative().optional(),
+  costPrice: z.number().int().nonnegative().optional(),
+  reorderLevel: z.number().nonnegative().optional(),
   sku: z.string().trim().min(1).optional(),
   active: z.boolean().optional(),
 })
@@ -19,10 +23,14 @@ const ItemSchema = z.object({
 const PatchSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1).optional(),
+  nameBn: z.string().trim().nullable().optional(),
+  code: z.string().trim().min(1).nullable().optional(),
   categoryId: z.string().uuid().nullable().optional(),
   category: z.string().trim().min(1).optional(),
   unit: z.string().trim().nullable().optional(),
   price: z.number().int().nonnegative().optional(),
+  costPrice: z.number().int().nonnegative().optional(),
+  reorderLevel: z.number().nonnegative().optional(),
   active: z.boolean().optional(),
 })
 
@@ -122,6 +130,18 @@ export async function createProducts(input: unknown) {
       requestedSkus.forEach((s) => taken.add(s))
     }
 
+    const requestedCodes = data.map((d: z.infer<typeof ItemSchema>) => d.code).filter(Boolean) as string[]
+    if (requestedCodes.length > 0) {
+      if (new Set(requestedCodes).size !== requestedCodes.length) throw conflict('duplicate item code in this batch')
+      const existingCodes = await tx
+        .select({ code: products.code })
+        .from(products)
+        .where(and(eq(products.tenantId, scope.tenantId), inArray(products.code, requestedCodes)))
+      if (existingCodes.length > 0) {
+        throw conflict(`Item code already exists: ${existingCodes.map((c) => c.code).join(', ')}`)
+      }
+    }
+
     const resolvedSkus: string[] = data.map((d: z.infer<typeof ItemSchema>) => {
       if (d.sku) return d.sku
       const candidate = uniqueSku(defaultSkuBase(d.name), taken)
@@ -135,9 +155,13 @@ export async function createProducts(input: unknown) {
         data.map((d: z.infer<typeof ItemSchema>, i: number) => ({
           tenantId: scope.tenantId,
           name: d.name,
+          nameBn: d.nameBn ?? null,
+          code: d.code ?? null,
           categoryId: categoryIds[i],
           unit: d.unit ?? null,
           price: d.price ?? 0,
+          costPrice: d.costPrice ?? 0,
+          reorderLevel: d.reorderLevel ?? 0,
           active: d.active ?? true,
         })),
       )
@@ -199,6 +223,14 @@ export async function updateProduct(input: unknown) {
       .where(and(eq(products.id, d.id), eq(products.tenantId, scope.tenantId)))
     if (!target) throw notFound('product not found')
 
+    if (d.code && d.code !== target.code) {
+      const [clash] = await tx
+        .select({ id: products.id })
+        .from(products)
+        .where(and(eq(products.tenantId, scope.tenantId), eq(products.code, d.code)))
+      if (clash && clash.id !== target.id) throw conflict('item code already exists')
+    }
+
     let categoryId: string | null | undefined = d.categoryId
     if (d.category !== undefined) {
       const [existing] = await tx
@@ -217,9 +249,13 @@ export async function updateProduct(input: unknown) {
 
     const patch: Record<string, unknown> = {}
     if (d.name !== undefined) patch.name = d.name
+    if (d.nameBn !== undefined) patch.nameBn = d.nameBn
+    if (d.code !== undefined) patch.code = d.code
     if (categoryId !== undefined) patch.categoryId = categoryId
     if (d.unit !== undefined) patch.unit = d.unit
     if (d.price !== undefined) patch.price = d.price
+    if (d.costPrice !== undefined) patch.costPrice = d.costPrice
+    if (d.reorderLevel !== undefined) patch.reorderLevel = d.reorderLevel
     if (d.active !== undefined) patch.active = d.active
     if (Object.keys(patch).length === 0) throw badRequest('nothing to update')
 
@@ -260,6 +296,22 @@ export async function deleteProduct(id: string) {
       .from(products)
       .where(and(eq(products.id, id), eq(products.tenantId, scope.tenantId)))
     if (!target) throw notFound('product not found')
+
+    // A product with history must stay in the books; deactivate it instead of
+    // deleting, so stock and invoice history keep their item.
+    const [moved] = await tx
+      .select({ id: stockMovements.id })
+      .from(stockMovements)
+      .where(and(eq(stockMovements.tenantId, scope.tenantId), eq(stockMovements.productId, id)))
+      .limit(1)
+    const [invoiced] = await tx
+      .select({ id: invoiceLines.id })
+      .from(invoiceLines)
+      .where(and(eq(invoiceLines.tenantId, scope.tenantId), eq(invoiceLines.productId, id)))
+      .limit(1)
+    if (moved || invoiced) {
+      throw conflict('this product has stock or invoice history; deactivate it instead of deleting')
+    }
 
     await tx.delete(products).where(and(eq(products.id, id), eq(products.tenantId, scope.tenantId)))
     await writeAudit(

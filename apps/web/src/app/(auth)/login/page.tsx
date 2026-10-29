@@ -24,6 +24,8 @@ export default function LoginPage() {
       setNotice('That company and all of its data were deleted. Sign in with another company to continue.')
     } else if (params.get('expired')) {
       setNotice('Your session is no longer valid. Sign in again to continue.')
+    } else if (params.get('suspended')) {
+      setNotice('That company is suspended or archived. Contact an administrator, or sign in with another company.')
     }
   }, [])
 

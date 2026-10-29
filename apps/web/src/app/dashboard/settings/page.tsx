@@ -3,10 +3,15 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { AlertTriangle, BookOpen, CheckCircle2, KeyRound, Loader2, Save, Settings as SettingsIcon, Trash2, X } from 'lucide-react'
+import { AlertTriangle, BookOpen, Building2, CheckCircle2, KeyRound, Loader2, Save, Settings as SettingsIcon, Trash2 } from 'lucide-react'
 import { can, type Role } from '@neurobook/shared'
 import Field, { FormAlert } from '@/ui/Field'
+import PageHeader from '@/ui/PageHeader'
+import RoleNotice from '@/ui/RoleNotice'
+import Modal from '@/ui/Modal'
+import Button, { buttonClass } from '@/ui/Button'
 import FiscalPeriodsPanel from '@/ui/FiscalPeriodsPanel'
+import TaxRatesPanel from '@/ui/TaxRatesPanel'
 import { invalidateMe } from '@/ui/useMe'
 
 interface CompanySettings {
@@ -22,6 +27,20 @@ interface TenantInfo {
   id: string
   name: string
   slug: string
+  tenantCode: string
+  legalName: string | null
+  email: string | null
+  phone: string | null
+  website: string | null
+  addressLine1: string | null
+  addressLine2: string | null
+  city: string | null
+  district: string | null
+  postalCode: string | null
+  country: string | null
+  timezone: string | null
+  locale: string | null
+  status: string
 }
 
 const CURRENCIES = ['BDT', 'USD', 'EUR', 'GBP', 'INR', 'AED', 'SAR', 'MYR']
@@ -45,6 +64,20 @@ export default function SettingsPage() {
   const [currency, setCurrency] = useState('BDT')
   const [fiscalYearStartMonth, setFiscalYearStartMonth] = useState('7')
   const [logoUrl, setLogoUrl] = useState('')
+
+  const [legalName, setLegalName] = useState('')
+  const [companyEmail, setCompanyEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [website, setWebsite] = useState('')
+  const [addressLine1, setAddressLine1] = useState('')
+  const [addressLine2, setAddressLine2] = useState('')
+  const [city, setCity] = useState('')
+  const [district, setDistrict] = useState('')
+  const [postalCode, setPostalCode] = useState('')
+  const [country, setCountry] = useState('BD')
+  const [timezone, setTimezone] = useState('Asia/Dhaka')
+  const [locale, setLocale] = useState('en')
+  const [status, setStatus] = useState('active')
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -77,6 +110,22 @@ export default function SettingsPage() {
         setCurrency(j.data.currency ?? 'BDT')
         setFiscalYearStartMonth(String(j.data.fiscalYearStartMonth ?? 7))
         setLogoUrl(j.data.logoUrl ?? '')
+        const t = j.meta?.tenant
+        if (t) {
+          setLegalName(t.legalName ?? '')
+          setCompanyEmail(t.email ?? '')
+          setPhone(t.phone ?? '')
+          setWebsite(t.website ?? '')
+          setAddressLine1(t.addressLine1 ?? '')
+          setAddressLine2(t.addressLine2 ?? '')
+          setCity(t.city ?? '')
+          setDistrict(t.district ?? '')
+          setPostalCode(t.postalCode ?? '')
+          setCountry(t.country ?? 'BD')
+          setTimezone(t.timezone ?? 'Asia/Dhaka')
+          setLocale(t.locale ?? 'en')
+          setStatus(t.status ?? 'active')
+        }
       })
       .catch(() => setError('Could not load the current settings.'))
       .finally(() => setLoading(false))
@@ -108,6 +157,21 @@ export default function SettingsPage() {
           currency,
           fiscalYearStartMonth: Number(fiscalYearStartMonth),
           logoUrl: logoUrl.trim() || undefined,
+          profile: {
+            legalName: legalName.trim() || undefined,
+            email: companyEmail.trim() || undefined,
+            phone: phone.trim() || undefined,
+            website: website.trim() || undefined,
+            addressLine1: addressLine1.trim() || undefined,
+            addressLine2: addressLine2.trim() || undefined,
+            city: city.trim() || undefined,
+            district: district.trim() || undefined,
+            postalCode: postalCode.trim() || undefined,
+            country: country.trim() || undefined,
+            timezone: timezone.trim() || undefined,
+            locale: locale.trim() || undefined,
+            status: canManageCompany ? status : undefined,
+          },
         }),
       })
       if (!res.ok) {
@@ -195,25 +259,22 @@ export default function SettingsPage() {
     }
   }
 
+  /** Closes the delete dialog and clears anything typed into it. */
+  function closeDelete() {
+    setDeleteOpen(false)
+    setDeleteCode('')
+    setDeleteError(null)
+  }
+
   return (
     <main className="mx-auto max-w-7xl space-y-6">
-      <header>
-        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
-          <SettingsIcon size={22} className="text-blue-600" aria-hidden />
-          Settings
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Company identity, currency, fiscal year and period locks. The company name shows in the sidebar, the switcher
-          and the dashboard; the rest appears on invoices and reports.
-        </p>
-      </header>
+      <PageHeader
+        icon={SettingsIcon}
+        title="Settings"
+        description="Company identity, currency, fiscal year and period locks. The company name shows in the sidebar, the switcher and the dashboard; the rest appears on invoices and reports."
+      />
 
-      {role && !canWrite && (
-        <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
-          Your role can view settings but not change them.
-        </p>
-      )}
+      {role && !canWrite && <RoleNotice>Your role can view settings but not change them.</RoleNotice>}
 
       {loading ? (
         <p className="flex items-center gap-2 text-sm text-gray-500">
@@ -234,6 +295,16 @@ export default function SettingsPage() {
               onChange={(e) => setCompanyName(e.target.value)}
               className="sm:col-span-2"
             />
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 sm:col-span-2">
+              <span>
+                Company code <span className="font-mono text-gray-700">{tenant?.tenantCode ?? '—'}</span>
+              </span>
+              <span aria-hidden>·</span>
+              <span>
+                Slug <span className="font-mono text-gray-700">{tenant?.slug ?? '—'}</span>
+              </span>
+              <span className="text-gray-400">Both are set when the company is created and cannot be changed here.</span>
+            </p>
             <Field
               label="BIN number"
               optional
@@ -302,6 +373,147 @@ export default function SettingsPage() {
             />
           </div>
 
+          <h2 className="mt-6 flex items-center gap-2 text-sm font-semibold text-gray-900">
+            <Building2 size={15} className="text-gray-400" aria-hidden />
+            Contact &amp; details
+          </h2>
+          <p className="mt-0.5 text-xs text-gray-500">
+            Printed on invoices and reports, and used for the company&apos;s local conventions.
+          </p>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <Field
+              label="Legal name"
+              optional
+              placeholder="NeuroBook Limited"
+              value={legalName}
+              disabled={!canWrite}
+              onChange={(e) => setLegalName(e.target.value)}
+              className="sm:col-span-2"
+            />
+            <Field
+              label="Email"
+              optional
+              type="email"
+              placeholder="accounts@company.com"
+              value={companyEmail}
+              disabled={!canWrite}
+              onChange={(e) => setCompanyEmail(e.target.value)}
+            />
+            <Field
+              label="Phone"
+              optional
+              placeholder="+880 1XXX XXXXXX"
+              value={phone}
+              disabled={!canWrite}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+            <Field
+              label="Website"
+              optional
+              placeholder="https://company.com"
+              value={website}
+              disabled={!canWrite}
+              onChange={(e) => setWebsite(e.target.value)}
+              className="sm:col-span-2"
+            />
+            <Field
+              label="Address line 1"
+              optional
+              placeholder="House / road"
+              value={addressLine1}
+              disabled={!canWrite}
+              onChange={(e) => setAddressLine1(e.target.value)}
+              className="sm:col-span-2"
+            />
+            <Field
+              label="Address line 2"
+              optional
+              placeholder="Area"
+              value={addressLine2}
+              disabled={!canWrite}
+              onChange={(e) => setAddressLine2(e.target.value)}
+              className="sm:col-span-2"
+            />
+            <Field
+              label="City"
+              optional
+              placeholder="Dhaka"
+              value={city}
+              disabled={!canWrite}
+              onChange={(e) => setCity(e.target.value)}
+            />
+            <Field
+              label="District"
+              optional
+              placeholder="Dhaka"
+              value={district}
+              disabled={!canWrite}
+              onChange={(e) => setDistrict(e.target.value)}
+            />
+            <Field
+              label="Postal code"
+              optional
+              placeholder="1207"
+              value={postalCode}
+              disabled={!canWrite}
+              onChange={(e) => setPostalCode(e.target.value)}
+            />
+            <Field
+              label="Country"
+              optional
+              placeholder="BD"
+              value={country}
+              disabled={!canWrite}
+              onChange={(e) => setCountry(e.target.value.slice(0, 2).toUpperCase())}
+              hint="ISO 3166-1 alpha-2."
+            />
+            <Field
+              label="Time zone"
+              optional
+              placeholder="Asia/Dhaka"
+              value={timezone}
+              disabled={!canWrite}
+              onChange={(e) => setTimezone(e.target.value)}
+              hint="IANA name; affects date handling."
+            />
+            <div>
+              <label htmlFor="locale" className="mb-1.5 block text-sm font-medium text-gray-700">
+                Language
+              </label>
+              <select
+                id="locale"
+                value={locale}
+                disabled={!canWrite}
+                onChange={(e) => setLocale(e.target.value)}
+                className={controlClass}
+              >
+                <option value="en">English</option>
+                <option value="bn">বাংলা (Bangla)</option>
+              </select>
+            </div>
+            {canManageCompany && (
+              <div className="sm:col-span-2">
+                <label htmlFor="tenant-status" className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Company status
+                </label>
+                <select
+                  id="tenant-status"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className={controlClass}
+                >
+                  <option value="active">Active</option>
+                  <option value="suspended">Suspended — nobody can sign in</option>
+                  <option value="archived">Archived</option>
+                </select>
+                <p className="mt-1.5 text-xs text-gray-400">
+                  Suspending blocks sign-in, company switching and any live session for this company.
+                </p>
+              </div>
+            )}
+          </div>
+
           {error && <div className="mt-4"><FormAlert message={error} /></div>}
 
           {saved && (
@@ -312,14 +524,10 @@ export default function SettingsPage() {
           )}
 
           <div className="mt-5 flex items-center gap-3 border-t border-gray-100 pt-4">
-            <button
-              type="submit"
-              disabled={!valid || !canWrite || saving}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {saving ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Save size={15} aria-hidden />}
+            <Button type="submit" loading={saving} disabled={!valid || !canWrite}>
+              {!saving && <Save size={15} aria-hidden />}
               {saving ? 'Saving...' : 'Save settings'}
-            </button>
+            </Button>
           </div>
         </form>
       )}
@@ -392,19 +600,21 @@ export default function SettingsPage() {
           )}
 
           <div className="mt-5 flex items-center gap-3 border-t border-gray-100 pt-4">
-            <button
+            <Button
               type="submit"
-              disabled={pwBusy || newPw.length < 8 || newPw !== confirmPw || (companyPasswordSet && currentPw.length === 0)}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              loading={pwBusy}
+              disabled={newPw.length < 8 || newPw !== confirmPw || (companyPasswordSet && currentPw.length === 0)}
             >
-              {pwBusy ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <KeyRound size={15} aria-hidden />}
+              {!pwBusy && <KeyRound size={15} aria-hidden />}
               {pwBusy ? 'Saving...' : companyPasswordSet ? 'Change company password' : 'Set company password'}
-            </button>
+            </Button>
           </div>
         </form>
       )}
 
       <FiscalPeriodsPanel />
+
+      <TaxRatesPanel />
 
       <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
         <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
@@ -412,19 +622,17 @@ export default function SettingsPage() {
           Related setup
         </h2>
         <p className="mt-1 text-xs text-gray-500">
-          Manage the chart of accounts, tax rates and users from their own screens.
+          Manage the chart of accounts and users from their own screens. Tax rates live above, with the other
+          accounting settings.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Link href="/dashboard/accounts" className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50">
+          <Link href="/dashboard/accounts" className={buttonClass('outline', 'sm')}>
             Chart of accounts
           </Link>
-          <Link href="/dashboard/tax/rates" className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50">
-            Tax rates
-          </Link>
-          <Link href="/dashboard/users" className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50">
+          <Link href="/dashboard/users" className={buttonClass('outline', 'sm')}>
             Users &amp; roles
           </Link>
-          <Link href="/dashboard/audit" className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50">
+          <Link href="/dashboard/audit" className={buttonClass('outline', 'sm')}>
             Audit log
           </Link>
         </div>
@@ -468,80 +676,62 @@ export default function SettingsPage() {
       )}
 
       {deleteOpen && tenant && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-md rounded-xl border border-red-200 bg-white p-4 shadow-xl">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="flex items-center gap-2 text-base font-bold text-red-700">
-                <AlertTriangle size={17} aria-hidden />
-                Delete {tenant.name}?
-              </h2>
-              <button
-                type="button"
-                onClick={() => {
-                  setDeleteOpen(false)
-                  setDeleteCode('')
-                  setDeleteError(null)
-                }}
-                aria-label="Close"
-                className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        <Modal
+          title={
+            <span className="flex items-center gap-2 text-red-700">
+              <AlertTriangle size={17} aria-hidden />
+              Delete {tenant.name}?
+            </span>
+          }
+          size="md"
+          onClose={closeDelete}
+          footer={
+            <>
+              <Button
+                type="submit"
+                form="delete-company-form"
+                variant="danger"
+                loading={deleteBusy}
+                disabled={deleteCode.trim().toLowerCase() !== tenant.slug}
               >
-                <X size={16} aria-hidden />
-              </button>
-            </div>
-
-            <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
-              <p className="font-semibold">This cannot be undone.</p>
-              <p className="mt-1">
-                Every record of <span className="font-semibold">{tenant.name}</span> (
-                <span className="font-mono text-xs">{tenant.slug}</span>) is erased permanently — users, ledgers,
-                vouchers, invoices, payments, settings and its audit log. You are working in this company, so you will be
-                signed out.
-              </p>
-            </div>
-
-            <form onSubmit={deleteCompany} className="mt-3 space-y-3">
-              <div>
-                <label htmlFor="delete-company-code" className="mb-1.5 block text-sm font-medium text-gray-700">
-                  Type <span className="font-mono text-gray-900">{tenant.slug}</span> to confirm
-                </label>
-                <input
-                  id="delete-company-code"
-                  autoFocus
-                  value={deleteCode}
-                  onChange={(e) => setDeleteCode(e.target.value)}
-                  placeholder={tenant.slug}
-                  autoComplete="off"
-                  className={controlClass}
-                />
-              </div>
-
-              {deleteError && <FormAlert message={deleteError} />}
-
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeleteOpen(false)
-                    setDeleteCode('')
-                    setDeleteError(null)
-                  }}
-                  disabled={deleteBusy}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={deleteBusy || deleteCode.trim().toLowerCase() !== tenant.slug}
-                  className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  {deleteBusy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Trash2 size={14} aria-hidden />}
-                  {deleteBusy ? 'Deleting...' : 'Delete company permanently'}
-                </button>
-              </div>
-            </form>
+                {!deleteBusy && <Trash2 size={14} aria-hidden />}
+                {deleteBusy ? 'Deleting...' : 'Delete company permanently'}
+              </Button>
+              <Button type="button" variant="outline" onClick={closeDelete} disabled={deleteBusy}>
+                Cancel
+              </Button>
+            </>
+          }
+        >
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
+            <p className="font-semibold">This cannot be undone.</p>
+            <p className="mt-1">
+              Every record of <span className="font-semibold">{tenant.name}</span> (
+              <span className="font-mono text-xs">{tenant.slug}</span>) is erased permanently — users, ledgers,
+              vouchers, invoices, payments, settings and its audit log. You are working in this company, so you will be
+              signed out.
+            </p>
           </div>
-        </div>
+
+          <form id="delete-company-form" onSubmit={deleteCompany} className="mt-3 space-y-3">
+            <div>
+              <label htmlFor="delete-company-code" className="mb-1.5 block text-sm font-medium text-gray-700">
+                Type <span className="font-mono text-gray-900">{tenant.slug}</span> to confirm
+              </label>
+              <input
+                id="delete-company-code"
+                autoFocus
+                value={deleteCode}
+                onChange={(e) => setDeleteCode(e.target.value)}
+                placeholder={tenant.slug}
+                autoComplete="off"
+                className={controlClass}
+              />
+            </div>
+
+            {deleteError && <FormAlert message={deleteError} />}
+          </form>
+        </Modal>
       )}
     </main>
   )

@@ -1,7 +1,39 @@
 import type { TenantTx } from '../tenant'
-import { vouchers, journalLines, voucherSequences, idempotencyKeys, fiscalPeriods } from '../schema'
+import { accounts, vouchers, journalLines, voucherSequences, idempotencyKeys, fiscalPeriods } from '../schema'
 import { validateForPost, computeTotals, assertVoucherShape, type JournalEntry, type VoucherType } from '@neurobook/shared'
-import { sql, and, eq } from 'drizzle-orm'
+import { sql, and, eq, inArray } from 'drizzle-orm'
+
+/**
+ * Guards the journal against cross-company or mismatched accounts: every entry
+ * must point at an account owned by this tenant, and the stated account type
+ * must match the stored one. The composite FK then keeps the two in step.
+ */
+export async function assertEntriesBookable(
+  tenantId: string,
+  entries: JournalEntry[],
+  tx: TenantTx,
+  options: { allowInactive?: boolean } = {},
+): Promise<void> {
+  const ids = Array.from(new Set(entries.map((e) => e.accountId)))
+  if (ids.length === 0) throw new Error('VALIDATION: at least one entry required')
+
+  const rows = await tx
+    .select({ id: accounts.id, type: accounts.type, active: accounts.active })
+    .from(accounts)
+    .where(and(eq(accounts.tenantId, tenantId), inArray(accounts.id, ids)))
+  const byId = new Map(rows.map((r) => [r.id, r]))
+
+  for (const entry of entries) {
+    const account = byId.get(entry.accountId)
+    if (!account) throw new Error(`VALIDATION: account ${entry.accountId} does not belong to this company`)
+    if (!options.allowInactive && !account.active) {
+      throw new Error(`VALIDATION: account ${entry.accountId} is inactive`)
+    }
+    if (account.type !== entry.accountType) {
+      throw new Error(`VALIDATION: account ${entry.accountId} is ${account.type}, not ${entry.accountType}`)
+    }
+  }
+}
 
 export interface PostVoucherInput {
   tenantId: string
@@ -38,7 +70,25 @@ export async function postVoucher(input: PostVoucherInput, tx: TenantTx): Promis
   }
 
   validateForPost({ entries: input.entries, status: 'draft' })
-  assertVoucherShape({ type: input.voucherType, entries: input.entries })
+
+  const [draft] = await tx
+    .select({ status: vouchers.status, voucherType: vouchers.voucherType, reversesId: vouchers.reversesId })
+    .from(vouchers)
+    .where(and(eq(vouchers.id, input.voucherId), eq(vouchers.tenantId, input.tenantId)))
+  if (!draft) throw new Error('NOT_FOUND: voucher not found')
+  if (draft.status !== 'draft') throw new Error('CONFLICT: voucher is not a draft')
+  if (draft.voucherType !== input.voucherType) {
+    throw new Error('VALIDATION: voucher type does not match the draft')
+  }
+
+  // A reversal intentionally mirrors the original, so its account types are the
+  // opposite side of the same rule; only fresh vouchers are shape-checked.
+  if (!draft.reversesId) assertVoucherShape({ type: input.voucherType, entries: input.entries })
+
+  await assertEntriesBookable(input.tenantId, input.entries, tx, {
+    allowInactive: Boolean(draft.reversesId),
+  })
+
   const totals = computeTotals(input.entries)
 
   const fy = resolveFiscalYear(input.date)
@@ -75,6 +125,9 @@ export async function postVoucher(input: PostVoucherInput, tx: TenantTx): Promis
     sequenceNumber,
     narration: input.narration,
     date: new Date(input.date),
+    postedAt: new Date(),
+    postedBy: input.userId,
+    fiscalPeriodId: period?.id ?? null,
   }).where(and(eq(vouchers.id, input.voucherId), eq(vouchers.tenantId, input.tenantId)))
 
   await tx.delete(journalLines).where(eq(journalLines.voucherId, input.voucherId))

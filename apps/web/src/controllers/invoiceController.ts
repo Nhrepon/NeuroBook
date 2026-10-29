@@ -1,19 +1,26 @@
-import { invoiceLines, invoices, parties, vouchers } from '@/lib/db/schema'
+import { invoiceLines, invoices, parties, stockMovements, vouchers } from '@/lib/db/schema'
 import { requireScope } from '@/controllers/scope'
 import { withTenant } from '@/lib/db/tenant'
 import { postVoucher } from '@/lib/db/repo/post'
 import { writeAudit } from '@/lib/db/audit'
-import { deriveInvoiceLines, InvoiceLineSchema, resolveCustomerId } from '@/lib/db/invoice-write'
+import { deriveInvoiceLines, InvoiceLineSchema, resolveCustomerId, assertProductsOwned } from '@/lib/db/invoice-write'
 import { badRequest, notFound, conflict } from '@/controllers/errors'
 import { and, eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
+
+const DateOnlySchema = z
+  .string()
+  .refine((v) => !Number.isNaN(Date.parse(v)), 'invalid date')
 
 const CreateSchema = z.object({
   customerId: z.string().uuid().optional(),
   customerName: z.string().optional(),
   type: z.enum(['sale', 'purchase']).optional().default('sale'),
-  date: z.string(),
+  date: DateOnlySchema,
   number: z.string().optional(),
+  dueDate: DateOnlySchema.optional(),
+  paymentTerms: z.number().int().nonnegative().optional(),
+  notes: z.string().max(2000).optional(),
   /** Item lines; when present they define the invoice total and VAT. */
   lines: z.array(InvoiceLineSchema).min(1).optional(),
   total: z.number().int().nonnegative().optional(),
@@ -23,7 +30,10 @@ const CreateSchema = z.object({
 const UpdateSchema = z.object({
   customerId: z.string().uuid().optional(),
   customerName: z.string().optional(),
-  date: z.string().optional(),
+  date: DateOnlySchema.optional(),
+  dueDate: DateOnlySchema.nullable().optional(),
+  paymentTerms: z.number().int().nonnegative().nullable().optional(),
+  notes: z.string().max(2000).nullable().optional(),
   number: z.string().nullable().optional(),
   lines: z.array(InvoiceLineSchema).min(1).optional(),
 })
@@ -67,11 +77,35 @@ export async function createInvoice(input: unknown) {
   }
 
   return withTenant(scope.tenantId, async (tx) => {
-    // Totals are derived from the lines when they are present, so the header can
-    // never disagree with the items.
+    // Item lines, when given, are the single source of truth for money: the
+    // header is derived from them so it can never disagree with the items.
     const derived = deriveInvoiceLines(lines ?? [])
-    const total = (parsed.data.total ?? 0) + derived.total
-    const vat = (parsed.data.vat ?? 0) + derived.vat
+    const hasLines = Boolean(lines && lines.length > 0)
+    const total = hasLines ? derived.total : (parsed.data.total ?? 0)
+    const vat = hasLines ? derived.vat : (parsed.data.vat ?? 0)
+    if (!hasLines && parsed.data.total == null) {
+      throw badRequest('provide item lines or an explicit total')
+    }
+    if (vat > total) throw badRequest('vat cannot exceed the invoice total')
+
+    if (parsed.data.number) {
+      const [clash] = await tx
+        .select({ id: invoices.id })
+        .from(invoices)
+        .where(
+          and(
+            eq(invoices.tenantId, scope.tenantId),
+            eq(invoices.type, parsed.data.type ?? 'sale'),
+            eq(invoices.number, parsed.data.number),
+          ),
+        )
+      if (clash) throw conflict('an invoice with that number already exists for this type')
+    }
+
+    if (parsed.data.dueDate && Date.parse(parsed.data.dueDate) < Date.parse(parsed.data.date)) {
+      throw badRequest('the due date cannot be before the invoice date')
+    }
+    await assertProductsOwned(tx, scope.tenantId, derived.rows)
 
     const customerId = await resolveCustomerId(
       tx,
@@ -88,9 +122,13 @@ export async function createInvoice(input: unknown) {
         customerId: customerId ?? null,
         type: parsed.data.type ?? 'sale',
         date: new Date(parsed.data.date),
+        subtotal: total - vat,
         total,
         vat,
         number: parsed.data.number,
+        dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
+        paymentTerms: parsed.data.paymentTerms ?? null,
+        notes: parsed.data.notes ?? null,
       })
       .returning()
 
@@ -180,6 +218,20 @@ export async function updateInvoice(id: string, input: unknown) {
     if (!invoice) throw notFound('invoice not found')
     if (invoice.status !== 'draft') throw conflict('only draft invoices can be edited')
 
+    if (parsed.data.number && parsed.data.number !== invoice.number) {
+      const [clash] = await tx
+        .select({ id: invoices.id })
+        .from(invoices)
+        .where(
+          and(
+            eq(invoices.tenantId, scope.tenantId),
+            eq(invoices.type, invoice.type),
+            eq(invoices.number, parsed.data.number),
+          ),
+        )
+      if (clash && clash.id !== invoice.id) throw conflict('an invoice with that number already exists for this type')
+    }
+
     const customerId =
       parsed.data.customerId || parsed.data.customerName
         ? await resolveCustomerId(
@@ -195,12 +247,19 @@ export async function updateInvoice(id: string, input: unknown) {
     if (customerId) patch.customerId = customerId
     if (parsed.data.date) patch.date = new Date(parsed.data.date)
     if (parsed.data.number !== undefined) patch.number = parsed.data.number
+    if (parsed.data.dueDate !== undefined) {
+      patch.dueDate = parsed.data.dueDate ? new Date(parsed.data.dueDate) : null
+    }
+    if (parsed.data.paymentTerms !== undefined) patch.paymentTerms = parsed.data.paymentTerms
+    if (parsed.data.notes !== undefined) patch.notes = parsed.data.notes
 
     let derived: ReturnType<typeof deriveInvoiceLines> | null = null
     if (parsed.data.lines) {
       derived = deriveInvoiceLines(parsed.data.lines)
+      await assertProductsOwned(tx, scope.tenantId, derived.rows)
       patch.total = derived.total
       patch.vat = derived.vat
+      patch.subtotal = derived.total - derived.vat
     }
 
     const [row] = await tx
@@ -248,6 +307,8 @@ export async function postInvoice(id: string, input: unknown) {
     if (!invoice) throw notFound('invoice not found')
     if (invoice.status !== 'draft') throw conflict('invoice already posted')
 
+    const lines = await tx.select().from(invoiceLines).where(eq(invoiceLines.invoiceId, invoice.id))
+
     const isPurchase = invoice.type === 'purchase'
     const voucherType = isPurchase ? 'PURCHASE_INVOICE' : 'SALES_INVOICE'
 
@@ -275,6 +336,9 @@ export async function postInvoice(id: string, input: unknown) {
       .returning()
 
     const vatAccountId = parsed.data.vatAccountId
+    if (invoice.vat > 0 && !vatAccountId) {
+      throw badRequest('vatAccountId is required when the invoice carries VAT')
+    }
     const entries: { accountId: string; accountType: string; debit: number; credit: number }[] = []
     if (isPurchase) {
       // Purchase: debit expense (total - vat), debit VAT input, credit AP (total).
@@ -286,7 +350,7 @@ export async function postInvoice(id: string, input: unknown) {
       })
       if (invoice.vat > 0) {
         entries.push({
-          accountId: vatAccountId ?? parsed.data.expenseAccountId!,
+          accountId: vatAccountId!,
           accountType: 'ASSET',
           debit: invoice.vat,
           credit: 0,
@@ -303,7 +367,7 @@ export async function postInvoice(id: string, input: unknown) {
       })
       if (invoice.vat > 0) {
         entries.push({
-          accountId: vatAccountId ?? parsed.data.revenueAccountId!,
+          accountId: vatAccountId!,
           accountType: 'LIABILITY',
           debit: 0,
           credit: invoice.vat,
@@ -326,8 +390,24 @@ export async function postInvoice(id: string, input: unknown) {
 
     await tx
       .update(invoices)
-      .set({ status: 'sent', voucherId: draft.id })
+      .set({ status: 'sent', voucherId: draft.id, subtotal: invoice.total - invoice.vat })
       .where(and(eq(invoices.id, invoice.id), eq(invoices.tenantId, scope.tenantId)))
+
+    // Record every product step on the stock ledger: a supplier bill adds stock,
+    // a customer invoice removes it. Free-text lines carry no product.
+    const stockRows = lines
+      .filter((l) => l.productId)
+      .map((l) => ({
+        tenantId: scope.tenantId,
+        productId: l.productId as string,
+        voucherId: draft.id,
+        date: invoice.date,
+        quantity: l.quantity,
+        unitCost: l.unitPrice,
+        type: isPurchase ? 'in' : 'out',
+        reference: invoice.number ?? invoice.id,
+      }))
+    if (stockRows.length > 0) await tx.insert(stockMovements).values(stockRows)
 
     await writeAudit(
       {

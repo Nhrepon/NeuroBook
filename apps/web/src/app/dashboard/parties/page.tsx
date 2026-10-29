@@ -1,9 +1,17 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Loader2, Plus, Search, Users, X } from 'lucide-react'
+import { Plus, Users, X } from 'lucide-react'
 import { can, type Role } from '@neurobook/shared'
 import Field, { FormAlert } from '@/ui/Field'
+import PageHeader from '@/ui/PageHeader'
+import Card from '@/ui/Card'
+import RoleNotice from '@/ui/RoleNotice'
+import SearchInput from '@/ui/SearchInput'
+import DataTable from '@/ui/DataTable'
+import Modal from '@/ui/Modal'
+import Button from '@/ui/Button'
+import { StatCard, StatGrid } from '@/ui/StatCard'
 
 type PartyType = 'CUSTOMER' | 'SUPPLIER' | 'BOTH'
 
@@ -179,15 +187,11 @@ export default function PartiesPage() {
 
   return (
     <main className="mx-auto max-w-7xl">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
-            <Users size={22} className="text-blue-600" aria-hidden />
-            Parties
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">Customers and suppliers you trade with, used on invoices and vouchers.</p>
-        </div>
-
+      <PageHeader
+        icon={Users}
+        title="Parties"
+        description="Customers and suppliers you trade with, used on invoices and vouchers."
+      >
         <button
           type="button"
           onClick={() => canWrite && setShowForm((v) => !v)}
@@ -199,113 +203,87 @@ export default function PartiesPage() {
           {showForm ? <X size={15} aria-hidden /> : <Plus size={15} aria-hidden />}
           {showForm ? 'Cancel' : 'New party'}
         </button>
-      </header>
+      </PageHeader>
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-          <p className="text-xs font-medium text-gray-500">Total</p>
-          <p className="mt-1 text-xl font-semibold text-gray-900">{rows.length}</p>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-          <p className="text-xs font-medium text-gray-500">Customers</p>
-          <p className="mt-1 text-xl font-semibold text-blue-600">{customers}</p>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-          <p className="text-xs font-medium text-gray-500">Suppliers</p>
-          <p className="mt-1 text-xl font-semibold text-violet-600">{suppliers}</p>
-        </div>
-      </div>
+      <StatGrid>
+        <StatCard label="Total" value={rows.length} />
+        <StatCard label="Customers" value={customers} tone="text-blue-600" />
+        <StatCard label="Suppliers" value={suppliers} tone="text-violet-600" />
+      </StatGrid>
 
-      {role && !canWrite && (
-        <p className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
-          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden />
-          Your role can view parties but not create them.
-        </p>
-      )}
+      {role && !canWrite && <RoleNotice>Your role can view parties but not create them.</RoleNotice>}
 
       {showForm && canWrite && (
-        <form onSubmit={create} className="mb-5 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-          <h2 className="text-sm font-semibold text-gray-900">New party</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Name" required placeholder="Rahim Traders" value={name} onChange={(e) => setName(e.target.value)} />
-            <div>
-              <label htmlFor="party-type" className="mb-1.5 block text-sm font-medium text-gray-700">
-                Type
-              </label>
-              <select
-                id="party-type"
-                value={type}
-                onChange={(e) => setType(e.target.value as PartyType)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
-              >
-                <option value="CUSTOMER">Customer</option>
-                <option value="SUPPLIER">Supplier</option>
-                <option value="BOTH">Customer &amp; supplier</option>
-              </select>
-            </div>
-            <Field label="Phone" optional placeholder="01XXXXXXXXX" value={phone} onChange={(e) => setPhone(e.target.value)} />
-            <Field label="Email" optional type="email" placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <Field label="Address" optional placeholder="Dhaka" value={address} onChange={(e) => setAddress(e.target.value)} className="sm:col-span-2" />
-          </div>
-
-          <div className="mt-5 flex items-center gap-3 border-t border-gray-100 pt-4">
-            <button
-              type="submit"
-              disabled={!name.trim() || saving}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {saving && <Loader2 size={15} className="animate-spin" aria-hidden />}
-              {saving ? 'Saving...' : 'Save party'}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {editingId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-gray-200 bg-white p-4 shadow-xl sm:p-5">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="text-sm font-semibold text-gray-900">Edit party</h2>
-              <button type="button" onClick={() => setEditingId(null)} aria-label="Close" className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"><X size={16} aria-hidden /></button>
-            </div>
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <Field label="Name" required value={editName} onChange={(e) => setEditName(e.target.value)} />
+        <Card className="mb-5 p-4 sm:p-5">
+          <form onSubmit={create}>
+            <h2 className="text-sm font-semibold text-gray-900">New party</h2>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Field label="Name" required placeholder="Rahim Traders" value={name} onChange={(e) => setName(e.target.value)} />
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">Type</label>
-                <select value={editType} onChange={(e) => setEditType(e.target.value as PartyType)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25">
+                <label htmlFor="party-type" className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Type
+                </label>
+                <select
+                  id="party-type"
+                  value={type}
+                  onChange={(e) => setType(e.target.value as PartyType)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
+                >
                   <option value="CUSTOMER">Customer</option>
                   <option value="SUPPLIER">Supplier</option>
                   <option value="BOTH">Customer &amp; supplier</option>
                 </select>
               </div>
-              <Field label="Phone" optional value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
-              <Field label="Email" optional type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
-              <Field label="Address" optional value={editAddress} onChange={(e) => setEditAddress(e.target.value)} className="sm:col-span-2" />
+              <Field label="Phone" optional placeholder="01XXXXXXXXX" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <Field label="Email" optional type="email" placeholder="name@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <Field label="Address" optional placeholder="Dhaka" value={address} onChange={(e) => setAddress(e.target.value)} className="sm:col-span-2" />
             </div>
+
             <div className="mt-5 flex items-center gap-3 border-t border-gray-100 pt-4">
-              <button type="submit" onClick={saveEdit} disabled={!editName.trim() || editSaving} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
-                {editSaving && <Loader2 size={15} className="animate-spin" aria-hidden />}
-                {editSaving ? 'Saving...' : 'Save changes'}
-              </button>
-              <button type="button" onClick={() => setEditingId(null)} className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Cancel</button>
+              <Button type="submit" loading={saving} disabled={!name.trim()}>
+                {saving ? 'Saving...' : 'Save party'}
+              </Button>
             </div>
+          </form>
+        </Card>
+      )}
+
+      {editingId && (
+        <Modal
+          title="Edit party"
+          onClose={() => setEditingId(null)}
+          footer={
+            <>
+              <Button type="button" onClick={saveEdit} loading={editSaving} disabled={!editName.trim()}>
+                {editSaving ? 'Saving...' : 'Save changes'}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setEditingId(null)}>
+                Cancel
+              </Button>
+            </>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Name" required value={editName} onChange={(e) => setEditName(e.target.value)} />
+            <div>
+              <label className="mb-1.5 block text-sm font-medium text-gray-700">Type</label>
+              <select value={editType} onChange={(e) => setEditType(e.target.value as PartyType)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25">
+                <option value="CUSTOMER">Customer</option>
+                <option value="SUPPLIER">Supplier</option>
+                <option value="BOTH">Customer &amp; supplier</option>
+              </select>
+            </div>
+            <Field label="Phone" optional value={editPhone} onChange={(e) => setEditPhone(e.target.value)} />
+            <Field label="Email" optional type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+            <Field label="Address" optional value={editAddress} onChange={(e) => setEditAddress(e.target.value)} className="sm:col-span-2" />
           </div>
-        </div>
+        </Modal>
       )}
 
       {error && <FormAlert message={error} />}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/25">
-          <Search size={15} className="shrink-0 text-gray-400" aria-hidden />
-          <input
-            className="w-full bg-transparent py-2 text-sm outline-none placeholder:text-gray-400"
-            placeholder="Search name, phone or email"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search parties"
-          />
-        </div>
+        <SearchInput value={query} onChange={setQuery} placeholder="Search name, phone or email" className="max-w-sm flex-1" />
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value as 'ALL' | PartyType)}
@@ -319,65 +297,43 @@ export default function PartiesPage() {
         </select>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Name</th>
-                <th className="px-4 py-2.5 font-medium">Type</th>
-                <th className="px-4 py-2.5 font-medium">Phone</th>
-                <th className="px-4 py-2.5 font-medium">Email</th>
-                <th className="px-4 py-2.5 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 size={15} className="animate-spin" aria-hidden />
-                      Loading parties...
-                    </span>
-                  </td>
-                </tr>
-              )}
 
-              {!loading && visible.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-gray-500">
-                    {rows.length === 0 ? 'No parties yet. Create one to bill customers or record supplier bills.' : 'No parties match this search.'}
-                  </td>
-                </tr>
+      <DataTable
+        columns={[
+          { key: 'name', label: 'Name' },
+          { key: 'type', label: 'Type' },
+          { key: 'phone', label: 'Phone' },
+          { key: 'email', label: 'Email' },
+          { key: 'actions', label: 'Actions', align: 'right' },
+        ]}
+        loading={loading}
+        loadingLabel="Loading parties..."
+        isEmpty={visible.length === 0}
+        empty={rows.length === 0 ? 'No parties yet. Create one to bill customers or record supplier bills.' : 'No parties match this search.'}
+      >
+        {visible.map((row) => (
+          <tr key={row.id} className="hover:bg-gray-50/70">
+            <td className="px-4 py-2.5 font-medium text-gray-900">{row.name}</td>
+            <td className="px-4 py-2.5">
+              <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${TYPE_BADGE[row.type]}`}>
+                {TYPE_LABEL[row.type]}
+              </span>
+            </td>
+            <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">
+              {row.phone || <span className="text-gray-400">—</span>}
+            </td>
+            <td className="px-4 py-2.5 text-gray-700">{row.email || <span className="text-gray-400">—</span>}</td>
+            <td className="px-4 py-2.5 text-right">
+              {canWrite && (
+                <div className="flex items-center justify-end gap-3">
+                  <button type="button" onClick={() => startEdit(row)} className="text-xs font-semibold text-blue-600 hover:underline">Edit</button>
+                  <button type="button" onClick={() => deleteParty(row.id, row.name)} className="text-xs font-semibold text-red-600 hover:underline">Delete</button>
+                </div>
               )}
-
-              {!loading &&
-                visible.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-50/70">
-                    <td className="px-4 py-2.5 font-medium text-gray-900">{row.name}</td>
-                    <td className="px-4 py-2.5">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${TYPE_BADGE[row.type]}`}>
-                        {TYPE_LABEL[row.type]}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">
-                      {row.phone || <span className="text-gray-400">—</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-700">{row.email || <span className="text-gray-400">—</span>}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      {canWrite && (
-                        <div className="flex items-center justify-end gap-3">
-                          <button type="button" onClick={() => startEdit(row)} className="text-xs font-semibold text-blue-600 hover:underline">Edit</button>
-                          <button type="button" onClick={() => deleteParty(row.id, row.name)} className="text-xs font-semibold text-red-600 hover:underline">Delete</button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </td>
+          </tr>
+        ))}
+      </DataTable>
     </main>
   )
 }

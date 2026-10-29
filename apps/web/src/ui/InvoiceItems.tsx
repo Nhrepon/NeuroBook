@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { VAT_RATES, formatTaka, toMinor } from '@neurobook/shared'
 import { parseTaka, sanitizeAmount } from '@/lib/money-input'
+import Button from '@/ui/Button'
 
 export interface InvoiceItem {
   key: string
@@ -90,15 +91,16 @@ export default function InvoiceItemsEditor({ items, onChange, disabled }: Props)
           <h2 className="text-sm font-semibold text-gray-900">Items</h2>
           <p className="mt-0.5 text-xs text-gray-500">Unit prices exclude VAT; VAT is added on top per line.</p>
         </div>
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => onChange([...items, newInvoiceItem(items[items.length - 1]?.vatRate ?? '15')])}
           disabled={disabled}
-          className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Plus size={13} aria-hidden />
           Add item
-        </button>
+        </Button>
       </div>
 
       <div className="overflow-x-auto">

@@ -5,13 +5,14 @@ import {
   ChevronDown,
   ChevronRight,
   Globe,
-  Loader2,
   ScrollText,
-  Search,
   ShieldCheck,
   UserRound,
 } from 'lucide-react'
 import { FormAlert } from '@/ui/Field'
+import PageHeader from '@/ui/PageHeader'
+import SearchInput from '@/ui/SearchInput'
+import DataTable from '@/ui/DataTable'
 
 interface AuditRow {
   id: string
@@ -205,33 +206,27 @@ export default function AuditPage() {
 
   return (
     <main className="mx-auto max-w-7xl">
-      <header className="mb-5">
-        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
-          <ScrollText size={22} className="text-blue-600" aria-hidden />
-          Audit log
-          {company && (
+      <PageHeader
+        icon={ScrollText}
+        title="Audit log"
+        badge={
+          company && (
             <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-200">
               {company.name}
             </span>
-          )}
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Every write against this company, newest first, with which user did it, what changed and where the request
-          came from. Records are append-only and the newest 500 are shown.
-        </p>
-      </header>
+          )
+        }
+        description="Every write against this company, newest first, with which user did it, what changed and where the request came from. Records are append-only and the newest 500 are shown."
+      />
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/25">
-          <Search size={15} className="shrink-0 text-gray-400" aria-hidden />
-          <input
-            className="w-full bg-transparent py-2 text-sm outline-none placeholder:text-gray-400"
-            placeholder="Search user, action, resource, IP or changed value"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search audit log"
-          />
-        </div>
+        <SearchInput
+          value={query}
+          onChange={setQuery}
+          placeholder="Search user, action, resource, IP or changed value"
+          ariaLabel="Search audit log"
+          className="min-w-[220px] flex-1"
+        />
         <span className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-500">
           <ShieldCheck size={13} className="text-gray-400" aria-hidden />
           {visible.length} of {rows.length} events
@@ -244,42 +239,22 @@ export default function AuditPage() {
 
       {error && <FormAlert message={error} />}
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-              <tr>
-                <th className="w-8 px-2 py-2.5" />
-                <th className="px-3 py-2.5 font-medium">Time</th>
-                <th className="px-3 py-2.5 font-medium">User</th>
-                <th className="px-3 py-2.5 font-medium">Action</th>
-                <th className="px-3 py-2.5 font-medium">Resource</th>
-                <th className="px-3 py-2.5 font-medium">Changes</th>
-                <th className="px-3 py-2.5 font-medium">Where</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 size={15} className="animate-spin" aria-hidden />
-                      Loading audit log...
-                    </span>
-                  </td>
-                </tr>
-              )}
-
-              {!loading && visible.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-gray-500">
-                    {rows.length === 0 ? 'No audit events recorded yet.' : 'No events match this search.'}
-                  </td>
-                </tr>
-              )}
-
-              {!loading &&
-                visible.map((row) => {
+      <DataTable
+        columns={[
+          { key: 'chev', label: '', className: 'w-8 px-2 py-2.5' },
+          { key: 'time', label: 'Time', className: 'px-3 py-2.5 font-medium' },
+          { key: 'user', label: 'User', className: 'px-3 py-2.5 font-medium' },
+          { key: 'action', label: 'Action', className: 'px-3 py-2.5 font-medium' },
+          { key: 'resource', label: 'Resource', className: 'px-3 py-2.5 font-medium' },
+          { key: 'changes', label: 'Changes', className: 'px-3 py-2.5 font-medium' },
+          { key: 'where', label: 'Where', className: 'px-3 py-2.5 font-medium' },
+        ]}
+        loading={loading}
+        loadingLabel="Loading audit log..."
+        isEmpty={visible.length === 0}
+        empty={rows.length === 0 ? 'No audit events recorded yet.' : 'No events match this search.'}
+      >
+        {visible.map((row) => {
                   const changes = changesOf(row.before, row.after)
                   const isOpen = open.has(row.id)
                   const device = deviceOf(row.userAgent)
@@ -461,10 +436,7 @@ export default function AuditPage() {
                     </Fragment>
                   )
                 })}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      </DataTable>
     </main>
   )
 }

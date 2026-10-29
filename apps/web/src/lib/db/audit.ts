@@ -49,6 +49,30 @@ async function requestMeta(): Promise<RequestMeta> {
 }
 
 /**
+ * Keys whose values must never be persisted in the audit trail, however they are
+ * nested. `before` / `after` blobs are captured generically, so a password change
+ * would otherwise write the hash (or worse, a plaintext field) into the log.
+ */
+const SENSITIVE_KEYS = new Set([
+  'password', 'passwordhash', 'currentpassword', 'newpassword', 'confirmpassword',
+  'oldpassword', 'totpsecret', 'secret', 'token', 'accesstoken', 'refreshtoken',
+  'refreshtokenhash', 'apikey', 'privatekey',
+])
+
+/** Recursively replaces sensitive values with a marker before they are stored. */
+function redact(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redact)
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = SENSITIVE_KEYS.has(key.toLowerCase()) ? '[redacted]' : redact(val)
+    }
+    return out
+  }
+  return value
+}
+
+/**
  * Append-only audit trail. Pass the tenant transaction as `client` so the audit
  * row commits atomically with the mutation it describes.
  */
@@ -61,8 +85,8 @@ export async function writeAudit(entry: AuditEntry, client: typeof db | TenantTx
     action: entry.action,
     resourceType: entry.resourceType,
     resourceId: entry.resourceId ?? null,
-    before: (entry.before ?? null) as any,
-    after: (entry.after ?? null) as any,
+    before: redact(entry.before ?? null) as any,
+    after: redact(entry.after ?? null) as any,
     ip: entry.ip ?? meta.ip,
     actorRole: entry.actorRole ?? meta.actorRole,
     userAgent: entry.userAgent ?? meta.userAgent,

@@ -4,12 +4,13 @@ import { productSkus, products } from '@/lib/db/schema'
 import { withTenant } from '@/lib/db/tenant'
 import { writeAudit } from '@/lib/db/audit'
 import { requireScope } from '@/controllers/scope'
-import { badRequest, notFound } from '@/controllers/errors'
+import { badRequest, conflict, notFound } from '@/controllers/errors'
 
 const Schema = z.object({
   productId: z.string().uuid(),
   sku: z.string().trim().min(1).optional(),
   skus: z.array(z.string().trim().min(1)).optional(),
+  barcode: z.string().trim().min(1).optional(),
 })
 
 export async function getAllProductSkus(productId?: string | null) {
@@ -26,7 +27,7 @@ export async function createProductSkus(input: unknown) {
   const parsed = Schema.safeParse(input)
   if (!parsed.success) throw badRequest('productId and sku(s) required')
 
-  const { productId, sku, skus } = parsed.data
+  const { productId, sku, skus, barcode } = parsed.data
   const list = skus && skus.length > 0 ? skus : sku ? [sku] : []
   if (list.length === 0) throw badRequest('at least one SKU is required')
 
@@ -56,9 +57,17 @@ export async function createProductSkus(input: unknown) {
 
     if (toCreate.length === 0) return { data: [], skipped }
 
+    if (barcode && list.length === 1) {
+      const [clash] = await tx
+        .select({ id: productSkus.id })
+        .from(productSkus)
+        .where(and(eq(productSkus.tenantId, scope.tenantId), eq(productSkus.barcode, barcode)))
+      if (clash) throw conflict('that barcode is already assigned to another SKU')
+    }
+
     const rows = await tx
       .insert(productSkus)
-      .values(toCreate.map((s) => ({ tenantId: scope.tenantId, productId, sku: s })))
+      .values(toCreate.map((s, i) => ({ tenantId: scope.tenantId, productId, sku: s, barcode: list.length === 1 && i === 0 ? (barcode ?? null) : null })))
       .returning()
 
     await writeAudit(
@@ -68,7 +77,7 @@ export async function createProductSkus(input: unknown) {
         action: rows.length === 1 ? 'product_sku.create' : 'product_sku.bulk_create',
         resourceType: 'product_sku',
         resourceId: rows.length === 1 ? rows[0].id : null,
-        after: { productId, count: rows.length, skipped: skipped.length, skus: rows.map((r) => r.sku) },
+        after: { productId, count: rows.length, skipped: skipped.length, barcode: barcode ?? null, skus: rows.map((r) => r.sku) },
       },
       tx,
     )

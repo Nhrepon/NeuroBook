@@ -2,13 +2,18 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Building2, CheckCircle2, KeyRound, Loader2, LogIn, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Building2, CheckCircle2, KeyRound, LogIn, Trash2 } from 'lucide-react'
 import Field, { FormAlert } from '@/ui/Field'
+import PageHeader from '@/ui/PageHeader'
+import DataTable from '@/ui/DataTable'
+import Modal from '@/ui/Modal'
+import Button from '@/ui/Button'
 
 interface Company {
   id: string
   name: string
   slug: string
+  code: string
   passwordSet: boolean
   members: number
   current: boolean
@@ -176,17 +181,11 @@ export default function CompaniesPage() {
 
   return (
     <main className="mx-auto max-w-7xl space-y-5">
-      <header>
-        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
-          <Building2 size={22} className="text-blue-600" aria-hidden />
-          Companies
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Companies your email belongs to. Each one has exactly one company password, shared by everyone who switches
-          into it — change it here and all of that company&apos;s users get the new one. Only admins can change a
-          password.
-        </p>
-      </header>
+      <PageHeader
+        icon={Building2}
+        title="Companies"
+        description="Companies your email belongs to. Each one has exactly one company password, shared by everyone who switches into it — change it here and all of that company's users get the new one. Only admins can change a password."
+      />
 
       {error && <FormAlert message={error} />}
 
@@ -197,68 +196,67 @@ export default function CompaniesPage() {
         </p>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-gray-200">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-            <tr>
-              <th className="px-3 py-2">Company</th>
-              <th className="px-3 py-2">Users</th>
-              <th className="px-3 py-2">Company password</th>
-              <th className="px-3 py-2 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((c) => (
-              <tr key={c.id} className="border-t border-gray-100">
-                <td className="px-3 py-2">
-                  <span className="font-semibold text-gray-900">{c.name}</span>
-                  {c.current && (
-                    <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-200">
-                      Current
-                    </span>
-                  )}
-                  <span className="ml-2 font-mono text-[11px] text-gray-400">{c.slug}</span>
-                </td>
-                <td className="px-3 py-2 text-gray-600">{c.members}</td>
-                <td className="px-3 py-2">
-                  <span className={c.passwordSet ? 'text-emerald-700' : 'text-amber-700'}>
-                    {c.passwordSet ? 'Set' : 'Not set — nobody can switch in'}
-                  </span>
-                </td>
-                <td className="px-3 py-2">
-                  <div className="flex items-center justify-end gap-3">
-                    <button
-                      onClick={() => setPwTarget(c)}
-                      className="flex items-center gap-1 text-blue-600 hover:underline"
-                    >
-                      <KeyRound size={13} aria-hidden />
-                      Change password
-                    </button>
-                    {!c.current && (
-                      <button
-                        onClick={() => setEnterTarget(c)}
-                        disabled={!c.passwordSet}
-                        title={c.passwordSet ? undefined : 'Set a company password first'}
-                        className="flex items-center gap-1 text-gray-600 hover:underline disabled:text-gray-300 disabled:no-underline"
-                      >
-                        <LogIn size={13} aria-hidden />
-                        Switch
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setDeleteTarget(c)}
-                      className="flex items-center gap-1 text-red-600 hover:underline"
-                    >
-                      <Trash2 size={13} aria-hidden />
-                      Delete
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <DataTable
+        columns={[
+          { key: 'company', label: 'Company', className: 'px-3 py-2 font-medium' },
+          { key: 'users', label: 'Users', className: 'px-3 py-2 font-medium' },
+          { key: 'password', label: 'Company password', className: 'px-3 py-2 font-medium' },
+          { key: 'actions', label: 'Actions', className: 'px-3 py-2 font-medium text-right' },
+        ]}
+        isEmpty={rows.length === 0}
+        empty="No companies yet."
+      >
+        {rows.map((c) => (
+          <tr key={c.id}>
+            <td className="px-3 py-2">
+              <span className="font-semibold text-gray-900">{c.name}</span>
+              {c.current && (
+                <span className="ml-2 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 ring-1 ring-inset ring-blue-200">
+                  Current
+                </span>
+              )}
+              <span className="ml-2 rounded-md bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-500" title="Company code (permanent)">
+                {c.code}
+              </span>
+            </td>
+            <td className="px-3 py-2 text-gray-600">{c.members}</td>
+            <td className="px-3 py-2">
+              <span className={c.passwordSet ? 'text-emerald-700' : 'text-amber-700'}>
+                {c.passwordSet ? 'Set' : 'Not set — nobody can switch in'}
+              </span>
+            </td>
+            <td className="px-3 py-2">
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  onClick={() => setPwTarget(c)}
+                  className="flex items-center gap-1 text-blue-600 hover:underline"
+                >
+                  <KeyRound size={13} aria-hidden />
+                  Change password
+                </button>
+                {!c.current && (
+                  <button
+                    onClick={() => setEnterTarget(c)}
+                    disabled={!c.passwordSet}
+                    title={c.passwordSet ? undefined : 'Set a company password first'}
+                    className="flex items-center gap-1 text-gray-600 hover:underline disabled:text-gray-300 disabled:no-underline"
+                  >
+                    <LogIn size={13} aria-hidden />
+                    Switch
+                  </button>
+                )}
+                <button
+                  onClick={() => setDeleteTarget(c)}
+                  className="flex items-center gap-1 text-red-600 hover:underline"
+                >
+                  <Trash2 size={13} aria-hidden />
+                  Delete
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </DataTable>
 
       <p className="text-xs text-gray-400">
         Members of a company still sign in with their own password. The company password is only asked for when a
@@ -266,200 +264,164 @@ export default function CompaniesPage() {
       </p>
 
       {pwTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-4 shadow-xl">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="text-base font-bold text-gray-900">Company password</h2>
-              <button
-                onClick={closePassword}
-                aria-label="Close"
-                className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-              >
-                <X size={16} aria-hidden />
-              </button>
-            </div>
-            <p className="mt-1 text-xs text-gray-500">
+        <Modal
+          title="Company password"
+          subtitle={
+            <>
               New password for <span className="font-semibold text-gray-700">{pwTarget.name}</span> (
               <span className="font-mono">{pwTarget.slug}</span>). The current one is not required, and every user of
               this company will use the new one from now on.
-            </p>
+            </>
+          }
+          size="sm"
+          onClose={closePassword}
+          footer={
+            <>
+              <Button
+                type="submit"
+                form="company-password-form"
+                loading={pwBusy}
+                disabled={password.length < 8 || password !== confirm}
+              >
+                {pwBusy ? 'Saving...' : 'Change password'}
+              </Button>
+              <Button type="button" variant="outline" onClick={closePassword} disabled={pwBusy}>
+                Cancel
+              </Button>
+            </>
+          }
+        >
+          <form id="company-password-form" onSubmit={savePassword} className="space-y-3">
+            <Field
+              label="New company password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+            />
+            <Field
+              label="Confirm new password"
+              type="password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="Repeat it"
+            />
 
-            <form onSubmit={savePassword} className="mt-3 space-y-3">
-              <Field
-                label="New company password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="At least 8 characters"
-              />
-              <Field
-                label="Confirm new password"
-                type="password"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                placeholder="Repeat it"
-              />
-
-              {pwError && <FormAlert message={pwError} />}
-
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={closePassword}
-                  disabled={pwBusy}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={pwBusy || password.length < 8 || password !== confirm}
-                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  {pwBusy && <Loader2 size={14} className="animate-spin" aria-hidden />}
-                  {pwBusy ? 'Saving...' : 'Change password'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            {pwError && <FormAlert message={pwError} />}
+          </form>
+        </Modal>
       )}
 
       {enterTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-4 shadow-xl">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="text-base font-bold text-gray-900">Switch into {enterTarget.name}</h2>
-              <button
-                onClick={closeEnter}
-                aria-label="Close"
-                className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-              >
-                <X size={16} aria-hidden />
-              </button>
-            </div>
-            <p className="mt-1 text-xs text-gray-500">
+        <Modal
+          title={`Switch into ${enterTarget.name}`}
+          subtitle={
+            <>
               Enter the company password for <span className="font-mono">{enterTarget.slug}</span>. This session will
               then work on that company&apos;s books.
-            </p>
+            </>
+          }
+          size="sm"
+          onClose={closeEnter}
+          footer={
+            <>
+              <Button type="submit" form="enter-company-form" loading={enterBusy} disabled={enterPw.length === 0}>
+                {enterBusy ? 'Switching...' : 'Switch'}
+              </Button>
+              <Button type="button" variant="outline" onClick={closeEnter} disabled={enterBusy}>
+                Cancel
+              </Button>
+            </>
+          }
+        >
+          <form id="enter-company-form" onSubmit={enterCompany} className="space-y-3">
+            <label htmlFor="enter-pw" className="mb-1.5 block text-sm font-medium text-gray-700">
+              Company password
+            </label>
+            <input
+              id="enter-pw"
+              type="password"
+              autoFocus
+              value={enterPw}
+              onChange={(e) => setEnterPw(e.target.value)}
+              placeholder="Company password"
+              className={control}
+            />
 
-            <form onSubmit={enterCompany} className="mt-3 space-y-3">
-              <label htmlFor="enter-pw" className="mb-1.5 block text-sm font-medium text-gray-700">
-                Company password
-              </label>
-              <input
-                id="enter-pw"
-                type="password"
-                autoFocus
-                value={enterPw}
-                onChange={(e) => setEnterPw(e.target.value)}
-                placeholder="Company password"
-                className={control}
-              />
-
-              {enterError && <FormAlert message={enterError} />}
-
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={closeEnter}
-                  disabled={enterBusy}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={enterBusy || enterPw.length === 0}
-                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  {enterBusy && <Loader2 size={14} className="animate-spin" aria-hidden />}
-                  {enterBusy ? 'Switching...' : 'Switch'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            {enterError && <FormAlert message={enterError} />}
+          </form>
+        </Modal>
       )}
 
       {deleteTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-md rounded-xl border border-red-200 bg-white p-4 shadow-xl">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="flex items-center gap-2 text-base font-bold text-red-700">
-                <AlertTriangle size={17} aria-hidden />
-                Delete {deleteTarget.name}?
-              </h2>
-              <button
-                onClick={closeDelete}
-                aria-label="Close"
-                className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        <Modal
+          title={
+            <span className="flex items-center gap-2 text-red-700">
+              <AlertTriangle size={17} aria-hidden />
+              Delete {deleteTarget.name}?
+            </span>
+          }
+          size="md"
+          onClose={closeDelete}
+          footer={
+            <>
+              <Button
+                type="submit"
+                form="delete-company-form"
+                variant="danger"
+                loading={deleteBusy}
+                disabled={deleteCode.trim().toLowerCase() !== deleteTarget.slug}
               >
-                <X size={16} aria-hidden />
-              </button>
-            </div>
-
-            <div className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
-              <p className="font-semibold">This cannot be undone.</p>
-              <p className="mt-1">
-                Every record of <span className="font-semibold">{deleteTarget.name}</span> (
-                <span className="font-mono text-xs">{deleteTarget.slug}</span>) is erased permanently:
+                {!deleteBusy && <Trash2 size={14} aria-hidden />}
+                {deleteBusy ? 'Deleting...' : 'Delete company permanently'}
+              </Button>
+              <Button type="button" variant="outline" onClick={closeDelete} disabled={deleteBusy}>
+                Cancel
+              </Button>
+            </>
+          }
+        >
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-800">
+            <p className="font-semibold">This cannot be undone.</p>
+            <p className="mt-1">
+              Every record of <span className="font-semibold">{deleteTarget.name}</span> (
+              <span className="font-mono text-xs">{deleteTarget.slug}</span>) is erased permanently:
+            </p>
+            <ul className="mt-1.5 list-inside list-disc space-y-0.5 text-xs">
+              <li>
+                its {deleteTarget.members} user{deleteTarget.members === 1 ? '' : 's'} and their access
+              </li>
+              <li>chart of accounts, vouchers, journal entries and fiscal periods</li>
+              <li>invoices, payments, parties, products, stock and bank data</li>
+              <li>company settings, tax rates and the audit log for that company</li>
+            </ul>
+            {deleteTarget.current && (
+              <p className="mt-1.5 font-medium">
+                You are working in this company: deleting it signs this session out, and you will need to sign in again
+                with another company code.
               </p>
-              <ul className="mt-1.5 list-inside list-disc space-y-0.5 text-xs">
-                <li>
-                  its {deleteTarget.members} user{deleteTarget.members === 1 ? '' : 's'} and their access
-                </li>
-                <li>chart of accounts, vouchers, journal entries and fiscal periods</li>
-                <li>invoices, payments, parties, products, stock and bank data</li>
-                <li>company settings, tax rates and the audit log for that company</li>
-              </ul>
-              {deleteTarget.current && (
-                <p className="mt-1.5 font-medium">
-                  You are working in this company: deleting it signs this session out, and you will need to sign in again
-                  with another company code.
-                </p>
-              )}
+            )}
+          </div>
+
+          <form id="delete-company-form" onSubmit={confirmDelete} className="mt-3 space-y-3">
+            <div>
+              <label htmlFor="delete-code" className="mb-1.5 block text-sm font-medium text-gray-700">
+                Type <span className="font-mono text-gray-900">{deleteTarget.slug}</span> to confirm
+              </label>
+              <input
+                id="delete-code"
+                autoFocus
+                value={deleteCode}
+                onChange={(e) => setDeleteCode(e.target.value)}
+                placeholder={deleteTarget.slug}
+                autoComplete="off"
+                className={control}
+              />
             </div>
 
-            <form onSubmit={confirmDelete} className="mt-3 space-y-3">
-              <div>
-                <label htmlFor="delete-code" className="mb-1.5 block text-sm font-medium text-gray-700">
-                  Type <span className="font-mono text-gray-900">{deleteTarget.slug}</span> to confirm
-                </label>
-                <input
-                  id="delete-code"
-                  autoFocus
-                  value={deleteCode}
-                  onChange={(e) => setDeleteCode(e.target.value)}
-                  placeholder={deleteTarget.slug}
-                  autoComplete="off"
-                  className={control}
-                />
-              </div>
-
-              {deleteError && <FormAlert message={deleteError} />}
-
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={closeDelete}
-                  disabled={deleteBusy}
-                  className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={deleteBusy || deleteCode.trim().toLowerCase() !== deleteTarget.slug}
-                  className="flex items-center gap-1.5 rounded-lg bg-red-600 px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-                >
-                  {deleteBusy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Trash2 size={14} aria-hidden />}
-                  {deleteBusy ? 'Deleting...' : 'Delete company permanently'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            {deleteError && <FormAlert message={deleteError} />}
+          </form>
+        </Modal>
       )}
     </main>
   )

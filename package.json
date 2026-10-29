@@ -14,6 +14,7 @@
     "db:setup": "npm run --workspace=@neurobook/web db:setup",
     "db:seed": "npm run --workspace=@neurobook/web db:seed",
     "db:chart": "npm run --workspace=@neurobook/web db:chart",
+    "db:stock": "npm run --workspace=@neurobook/web db:stock",
     "db:multi-tenant": "npm run --workspace=@neurobook/web db:multi-tenant --",
     "db:sync-names": "npm run --workspace=@neurobook/web db:sync-names --",
     "db:rls": "npm run --workspace=@neurobook/web db:rls",

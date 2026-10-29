@@ -12,6 +12,7 @@ import {
 import { VOUCHER_CATALOG, voucherTypeLabel } from '@/lib/voucher-ui'
 import AccountPicker, { type LedgerAccount } from '@/ui/AccountPicker'
 import { FormAlert } from '@/ui/Field'
+import PageHeader from '@/ui/PageHeader'
 
 interface Line {
   key: string
@@ -70,6 +71,17 @@ const TEMPLATES: Partial<Record<VoucherType, { side: 'debit' | 'credit'; match: 
     { side: 'debit', match: ['cash', 'asset'] },
     { side: 'credit', match: ['general expense', 'expense'] },
   ],
+}
+
+/** The account-type rule the server enforces for each money-movement type. */
+const SHAPE_HINT: Partial<Record<VoucherType, string>> = {
+  PAYMENT: 'Credit cash or bank (an asset) and debit what the money paid for.',
+  REFUND: 'Credit cash or bank (an asset) and debit the refund.',
+  RECEIPT: 'Debit cash or bank (an asset) and credit the party who paid.',
+  CONTRA: 'Move money between asset accounts only — cash and bank.',
+  TRANSFER: 'Move money between asset accounts only — cash and bank.',
+  SALES_INVOICE: 'Debit a receivable (asset) and credit revenue.',
+  PURCHASE_INVOICE: 'Debit an expense and credit a payable (liability).',
 }
 
 export default function VoucherForm({ mode, voucherId, initialType }: VoucherFormProps) {
@@ -431,22 +443,18 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
 
   return (
     <main className="mx-auto max-w-7xl">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <Link href="/dashboard/vouchers" className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-gray-500 transition hover:text-gray-700">
-            <ArrowLeft size={13} aria-hidden />
-            Vouchers
-          </Link>
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900">
-            {editMode ? 'Edit draft voucher' : 'New voucher'}
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {editMode
-              ? 'Drafts stay editable until posted; posting locks the voucher for good.'
-              : 'Enter the ledgers and amounts. Numbering is gapless and applied when you post.'}
-          </p>
-        </div>
-      </header>
+      <Link href="/dashboard/vouchers" className="mb-1 inline-flex items-center gap-1 text-xs font-medium text-gray-500 transition hover:text-gray-700">
+        <ArrowLeft size={13} aria-hidden />
+        Vouchers
+      </Link>
+      <PageHeader
+        title={editMode ? 'Edit draft voucher' : 'New voucher'}
+        description={
+          editMode
+            ? 'Drafts stay editable until posted; posting locks the voucher for good.'
+            : 'Enter the ledgers and amounts. Numbering is gapless and applied when you post.'
+        }
+      />
 
       <form onSubmit={(e) => e.preventDefault()} onKeyDown={onFormKeyDown} className="space-y-4">
         <section className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
@@ -499,6 +507,9 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
                 </select>
               )}
               <p className="mt-1.5 text-xs text-gray-400">{typeMeta?.hint}</p>
+              {SHAPE_HINT[type] && (
+                <p className="mt-1 text-xs text-blue-700/80">{SHAPE_HINT[type]}</p>
+              )}
             </div>
 
             <div>

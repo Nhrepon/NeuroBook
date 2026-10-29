@@ -7,7 +7,7 @@ import { ensureDefaultChart } from '../chart'
 async function main() {
   let [tenant] = await db.select().from(tenants).where(eq(tenants.slug, 'demo'))
   if (!tenant) {
-    ;[tenant] = await db.insert(tenants).values({ name: 'Demo Company', slug: 'demo' }).returning()
+    ;[tenant] = await db.insert(tenants).values({ name: 'Demo Company', slug: 'demo', tenantCode: 'DEMO' }).returning()
   }
 
   const hash = await argon2.hash('password123', { type: argon2.argon2id })

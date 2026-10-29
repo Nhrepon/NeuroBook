@@ -4,7 +4,7 @@ import { fiscalPeriods } from '@/lib/db/schema'
 import { withTenant } from '@/lib/db/tenant'
 import { writeAudit } from '@/lib/db/audit'
 import { requireScope } from '@/controllers/scope'
-import { badRequest } from '@/controllers/errors'
+import { badRequest, conflict } from '@/controllers/errors'
 
 const Schema = z.object({
   label: z.string().min(1),
@@ -28,13 +28,25 @@ export async function createPeriod(input: unknown) {
   if (!parsed.success) throw badRequest('invalid input')
 
   return withTenant(scope.tenantId, async (tx) => {
+    const startDate = new Date(parsed.data.startDate)
+    const endDate = new Date(parsed.data.endDate)
+    if (!(endDate > startDate)) throw badRequest('the end date must be after the start date')
+
+    // Periods must not overlap: "is this date locked?" has to have one answer.
+    const existing = await tx
+      .select({ label: fiscalPeriods.label, startDate: fiscalPeriods.startDate, endDate: fiscalPeriods.endDate })
+      .from(fiscalPeriods)
+      .where(eq(fiscalPeriods.tenantId, scope.tenantId))
+    const clash = existing.find((p) => startDate <= new Date(p.endDate) && endDate >= new Date(p.startDate))
+    if (clash) throw conflict(`This range overlaps the existing period ${clash.label}.`)
+
     const [row] = await tx
       .insert(fiscalPeriods)
       .values({
         tenantId: scope.tenantId,
         label: parsed.data.label,
-        startDate: new Date(parsed.data.startDate),
-        endDate: new Date(parsed.data.endDate),
+        startDate,
+        endDate,
         status: parsed.data.status ?? 'open',
       })
       .returning()

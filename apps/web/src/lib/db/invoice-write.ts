@@ -1,12 +1,13 @@
-import { and, eq, sql } from 'drizzle-orm'
-import { parties } from '@/lib/db/schema'
+import { and, eq, inArray, sql } from 'drizzle-orm'
+import { parties, products } from '@/lib/db/schema'
 import type { TenantTx } from '@/lib/db/tenant'
 import { z } from 'zod'
 
 export const InvoiceLineSchema = z.object({
   productId: z.string().uuid().optional(),
   description: z.string().min(1),
-  quantity: z.number().int().positive(),
+  /** Fractions are allowed (4 decimal places are stored). */
+  quantity: z.number().positive().max(1_000_000_000),
   /** Unit price excluding VAT, in minor units. */
   unitPrice: z.number().int().nonnegative(),
   /** VAT rate in basis points (1500 = 15%). */
@@ -57,6 +58,26 @@ export function deriveInvoiceLines(lines: InvoiceLineInput[]): {
 }
 
 /**
+ * Guard against cross-company product ids: the FK only proves the product
+ * exists somewhere, so ownership is checked explicitly before lines are stored.
+ */
+export async function assertProductsOwned(
+  tx: TenantTx,
+  tenantId: string,
+  lines: { productId?: string | null }[],
+): Promise<void> {
+  const ids = Array.from(new Set(lines.map((l) => l.productId).filter(Boolean))) as string[]
+  if (ids.length === 0) return
+  const rows = await tx
+    .select({ id: products.id })
+    .from(products)
+    .where(and(eq(products.tenantId, tenantId), inArray(products.id, ids)))
+  if (rows.length !== ids.length) {
+    throw new Error('VALIDATION: an invoice line references a product from another company')
+  }
+}
+
+/**
  * Resolves the party for an invoice. An explicit id wins; otherwise the name is
  * matched case-insensitively so repeated invoices do not create duplicates.
  */
@@ -67,7 +88,14 @@ export async function resolveCustomerId(
   customerName: string | undefined,
   partyType: 'CUSTOMER' | 'SUPPLIER' = 'CUSTOMER',
 ): Promise<string | undefined> {
-  if (customerId) return customerId
+  if (customerId) {
+    const [party] = await tx
+      .select({ id: parties.id })
+      .from(parties)
+      .where(and(eq(parties.tenantId, tenantId), eq(parties.id, customerId)))
+    if (!party) throw new Error('VALIDATION: the selected party does not belong to this company')
+    return customerId
+  }
   const name = customerName?.trim()
   if (!name) return undefined
 

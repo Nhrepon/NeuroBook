@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, Save, Scale, Send } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, CheckCircle2, Save, Scale, Send } from 'lucide-react'
 import {
   INVOICE_ACCOUNTS, accountByCode, can, formatTaka, voucherTypePermission,
   type Role,
@@ -10,6 +10,8 @@ import {
 import { buildInvoiceEntries } from '@/lib/invoice-ui'
 import AccountPicker, { type LedgerAccount } from '@/ui/AccountPicker'
 import Field, { FormAlert } from '@/ui/Field'
+import RoleNotice from '@/ui/RoleNotice'
+import Button, { buttonClass } from '@/ui/Button'
 import InvoiceItemsEditor, {
   computeInvoiceItems, newInvoiceItem, validInvoiceLines, type InvoiceItem,
 } from '@/ui/InvoiceItems'
@@ -183,16 +185,10 @@ export default function SalesInvoiceForm() {
             </p>
           )}
           <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-            <Link
-              href={`/dashboard/vouchers/${done.id}`}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
-            >
+            <Link href={`/dashboard/vouchers/${done.id}`} className={buttonClass('primary')}>
               View voucher
             </Link>
-            <Link
-              href="/dashboard/sales"
-              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
-            >
+            <Link href="/dashboard/sales" className={buttonClass('outline')}>
               Back to sales
             </Link>
           </div>
@@ -217,10 +213,9 @@ export default function SalesInvoiceForm() {
       </header>
 
       {!canWrite && (
-        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden />
+        <RoleNotice>
           Your role can view sales invoices but not raise them. Ask an admin for the Sales or Accountant role.
-        </div>
+        </RoleNotice>
       )}
 
       <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
@@ -358,24 +353,20 @@ export default function SalesInvoiceForm() {
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => save('post')}
-            disabled={disabled || problems.length > 0}
-            className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {busy === 'post' ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Send size={15} aria-hidden />}
+          <Button type="button" onClick={() => save('post')} loading={busy === 'post'} disabled={disabled || problems.length > 0}>
+            {busy !== 'post' && <Send size={15} aria-hidden />}
             {busy === 'post' ? 'Posting...' : 'Save & post'}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="outline"
             onClick={() => save('draft')}
+            loading={busy === 'draft'}
             disabled={disabled || problems.length > 0}
-            className="flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy === 'draft' ? <Loader2 size={15} className="animate-spin" aria-hidden /> : <Save size={15} aria-hidden />}
+            {busy !== 'draft' && <Save size={15} aria-hidden />}
             {busy === 'draft' ? 'Saving...' : 'Save as draft'}
-          </button>
+          </Button>
           <span className="ml-auto hidden text-xs text-gray-400 sm:block">Numbering is applied when you post.</span>
         </div>
       </form>

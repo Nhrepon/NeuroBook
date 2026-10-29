@@ -1,8 +1,12 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ArrowRightLeft, Loader2, Trash2, UserPlus, X } from 'lucide-react'
+import { ArrowRightLeft, Trash2, UserPlus } from 'lucide-react'
 import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS, can, type Role } from '@neurobook/shared'
+import PageHeader from '@/ui/PageHeader'
+import DataTable from '@/ui/DataTable'
+import Modal from '@/ui/Modal'
+import Button from '@/ui/Button'
 
 interface UserRow {
   id: string
@@ -139,14 +143,18 @@ export default function UsersPage() {
 
   return (
     <main className="mx-auto max-w-7xl space-y-5">
-      <header>
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Users &amp; roles</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Everyone here belongs to {me?.tenantName ?? 'this company'}
-          {me?.tenantSlug && <span className="ml-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-600">{me.tenantSlug}</span>}
-          . Roles control what they can do.
-        </p>
-      </header>
+      <PageHeader
+        title="Users & roles"
+        description={
+          <>
+            Everyone here belongs to {me?.tenantName ?? 'this company'}
+            {me?.tenantSlug && (
+              <span className="ml-1 rounded bg-gray-100 px-1.5 py-0.5 font-mono text-xs text-gray-600">{me.tenantSlug}</span>
+            )}
+            . Roles control what they can do.
+          </>
+        }
+      />
 
       <form onSubmit={create} className="rounded-xl border border-gray-200 bg-gray-50 p-4">
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
@@ -178,9 +186,9 @@ export default function UsersPage() {
               </option>
             ))}
           </select>
-          <button disabled={busy} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+          <Button type="submit" loading={busy}>
             {busy ? 'Adding...' : 'Add user'}
-          </button>
+          </Button>
         </div>
         <p className="mt-2 text-xs text-gray-500">{ROLE_DESCRIPTIONS[role]}</p>
         <p className="mt-1 text-xs text-gray-400">
@@ -190,79 +198,76 @@ export default function UsersPage() {
 
       {error && <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">{error}</p>}
 
-      <div className="overflow-hidden rounded-xl border border-gray-200">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-            <tr>
-              <th className="px-3 py-2">Email</th>
-              <th className="px-3 py-2">Role</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((u) => {
-              const isMe = me?.id === u.id
-              return (
-                <tr key={u.id} className="border-t border-gray-100">
-                  <td className="px-3 py-2">
-                    {u.email} {isMe && <span className="ml-1 text-xs text-gray-400">(you)</span>}
-                  </td>
-                  <td className="px-3 py-2">
-                    <select
-                      className="rounded border border-gray-300 p-1"
-                      value={u.role}
+      <DataTable
+        columns={[
+          { key: 'email', label: 'Email', className: 'px-3 py-2 font-medium' },
+          { key: 'role', label: 'Role', className: 'px-3 py-2 font-medium' },
+          { key: 'status', label: 'Status', className: 'px-3 py-2 font-medium' },
+          { key: 'actions', label: 'Actions', className: 'px-3 py-2 font-medium text-right' },
+        ]}
+        isEmpty={rows.length === 0}
+        empty="No users yet."
+      >
+        {rows.map((u) => {
+          const isMe = me?.id === u.id
+          return (
+            <tr key={u.id}>
+              <td className="px-3 py-2">
+                {u.email} {isMe && <span className="ml-1 text-xs text-gray-400">(you)</span>}
+              </td>
+              <td className="px-3 py-2">
+                <select
+                  className="rounded border border-gray-300 p-1"
+                  value={u.role}
+                  disabled={isMe}
+                  onChange={(e) => patch(u.id, { role: e.target.value as Role })}
+                >
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </option>
+                  ))}
+                </select>
+              </td>
+              <td className="px-3 py-2">
+                <span className={u.active ? 'text-emerald-700' : 'text-gray-400'}>
+                  {u.active ? 'Active' : 'Disabled'}
+                </span>
+              </td>
+              <td className="px-3 py-2">
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    disabled={isMe}
+                    onClick={() => patch(u.id, { active: !u.active })}
+                    className="text-blue-600 hover:underline disabled:text-gray-300 disabled:no-underline"
+                  >
+                    {u.active ? 'Disable' : 'Enable'}
+                  </button>
+                  {canManageTenants && (
+                    <button
                       disabled={isMe}
-                      onChange={(e) => patch(u.id, { role: e.target.value as Role })}
+                      onClick={() => openMove(u)}
+                      className="flex items-center gap-1 text-gray-600 hover:underline disabled:text-gray-300 disabled:no-underline"
+                      title="Move to another company"
                     >
-                      {ROLES.map((r) => (
-                        <option key={r} value={r}>
-                          {ROLE_LABELS[r]}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-3 py-2">
-                    <span className={u.active ? 'text-emerald-700' : 'text-gray-400'}>
-                      {u.active ? 'Active' : 'Disabled'}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="flex items-center justify-end gap-3">
-                      <button
-                        disabled={isMe}
-                        onClick={() => patch(u.id, { active: !u.active })}
-                        className="text-blue-600 hover:underline disabled:text-gray-300 disabled:no-underline"
-                      >
-                        {u.active ? 'Disable' : 'Enable'}
-                      </button>
-                      {canManageTenants && (
-                        <button
-                          disabled={isMe}
-                          onClick={() => openMove(u)}
-                          className="flex items-center gap-1 text-gray-600 hover:underline disabled:text-gray-300 disabled:no-underline"
-                          title="Move to another company"
-                        >
-                          <ArrowRightLeft size={13} aria-hidden />
-                          Move
-                        </button>
-                      )}
-                      <button
-                        disabled={isMe}
-                        onClick={() => remove(u)}
-                        className="flex items-center gap-1 text-red-600 hover:underline disabled:text-gray-300 disabled:no-underline"
-                      >
-                        <Trash2 size={13} aria-hidden />
-                        Remove
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+                      <ArrowRightLeft size={13} aria-hidden />
+                      Move
+                    </button>
+                  )}
+                  <button
+                    disabled={isMe}
+                    onClick={() => remove(u)}
+                    className="flex items-center gap-1 text-red-600 hover:underline disabled:text-gray-300 disabled:no-underline"
+                  >
+                    <Trash2 size={13} aria-hidden />
+                    Remove
+                  </button>
+                </div>
+              </td>
+            </tr>
+          )
+        })}
+      </DataTable>
 
       <div className="rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-600">
         <p className="mb-1 font-medium text-gray-800">What each role can do</p>
@@ -276,70 +281,54 @@ export default function UsersPage() {
       </div>
 
       {moving && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white p-4 shadow-xl">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="text-base font-bold text-gray-900">Move user to another company</h2>
-              <button
-                onClick={() => {
-                  setMoving(null)
-                  setMoveError(null)
-                }}
-                aria-label="Close"
-                className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-              >
-                <X size={16} aria-hidden />
-              </button>
-            </div>
-            <p className="mt-1 text-xs text-gray-500">
-              {moving.email} loses access to {me?.tenantName ?? 'this company'} and is added to the company you pick.
-              Their role stays {ROLE_LABELS[moving.role]}. They are signed out everywhere.
-            </p>
-
-            <div className="mt-3 space-y-1.5">
-              {companies === null && <p className="text-xs text-gray-400">Loading companies...</p>}
-              {(companies ?? [])
-                .filter((c) => !c.current)
-                .map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={() => setTarget(c.id)}
-                    className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition ${
-                      target === c.id ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
-                    }`}
-                  >
-                    <span className="font-semibold text-gray-900">{c.name}</span>
-                    <span className="font-mono text-[11px] text-gray-400">{c.slug}</span>
-                  </button>
-                ))}
-            </div>
-
-            {moveError && (
-              <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{moveError}</p>
-            )}
-
-            <div className="mt-3 flex justify-end gap-2">
-              <button
+        <Modal
+          title="Move user to another company"
+          subtitle={`${moving.email} loses access to ${me?.tenantName ?? 'this company'} and is added to the company you pick. Their role stays ${ROLE_LABELS[moving.role]}. They are signed out everywhere.`}
+          size="sm"
+          onClose={() => {
+            setMoving(null)
+            setMoveError(null)
+          }}
+          footer={
+            <>
+              <Button onClick={submitMove} loading={moveBusy} disabled={!target}>
+                Move user
+              </Button>
+              <Button
+                variant="outline"
                 onClick={() => {
                   setMoving(null)
                   setMoveError(null)
                 }}
                 disabled={moveBusy}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
               >
                 Cancel
-              </button>
-              <button
-                onClick={submitMove}
-                disabled={!target || moveBusy}
-                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {moveBusy && <Loader2 size={14} className="animate-spin" aria-hidden />}
-                Move user
-              </button>
-            </div>
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-1.5">
+            {companies === null && <p className="text-xs text-gray-400">Loading companies...</p>}
+            {(companies ?? [])
+              .filter((c) => !c.current)
+              .map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => setTarget(c.id)}
+                  className={`flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition ${
+                    target === c.id ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="font-semibold text-gray-900">{c.name}</span>
+                  <span className="font-mono text-[11px] text-gray-400">{c.slug}</span>
+                </button>
+              ))}
           </div>
-        </div>
+
+          {moveError && (
+            <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{moveError}</p>
+          )}
+        </Modal>
       )}
     </main>
   )

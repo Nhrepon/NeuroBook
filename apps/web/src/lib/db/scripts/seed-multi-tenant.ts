@@ -37,7 +37,7 @@ async function seed() {
   const hash = await argon2.hash(PASSWORD, { type: argon2.argon2id })
 
   if (!tenant) {
-    ;[tenant] = await db.insert(tenants).values({ name: NAME, slug: SLUG, passwordHash: hash }).returning()
+    ;[tenant] = await db.insert(tenants).values({ name: NAME, slug: SLUG, tenantCode: SLUG.toUpperCase(), passwordHash: hash }).returning()
     console.log(`Created company '${NAME}' (code: ${SLUG}).`)
   } else if (!tenant.passwordHash) {
     await db.update(tenants).set({ passwordHash: hash, updatedAt: new Date() }).where(eq(tenants.id, tenant.id))

@@ -1,7 +1,7 @@
 import { vouchers, journalLines } from '@/lib/db/schema'
 import { requireScope, ForbiddenError } from '@/controllers/scope'
 import { withTenant } from '@/lib/db/tenant'
-import { postVoucher as postVoucherRepo } from '@/lib/db/repo/post'
+import { postVoucher as postVoucherRepo, assertEntriesBookable } from '@/lib/db/repo/post'
 import { reverseVoucher as reverseVoucherRepo } from '@/lib/db/repo/reverse'
 import { writeAudit } from '@/lib/db/audit'
 import { badRequest, notFound, conflict } from '@/controllers/errors'
@@ -9,8 +9,12 @@ import { VoucherTypeSchema, can, voucherTypePermission, validateForPost, type Vo
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
+const DateOnlySchema = z
+  .string()
+  .refine((v) => !Number.isNaN(Date.parse(v)), 'invalid date')
+
 const CreateSchema = z.object({
-  date: z.string(),
+  date: DateOnlySchema,
   narration: z.string().min(1),
   voucherType: VoucherTypeSchema,
 })
@@ -24,14 +28,14 @@ const EntrySchema = z.object({
 })
 
 const UpdateSchema = z.object({
-  date: z.string().optional(),
-  narration: z.string().optional(),
+  date: DateOnlySchema.optional(),
+  narration: z.string().min(1).optional(),
   entries: z.array(EntrySchema).optional(),
 })
 
 const PostSchema = z.object({
-  date: z.string(),
-  narration: z.string(),
+  date: DateOnlySchema,
+  narration: z.string().min(1),
   voucherType: z.string(),
   entries: z.array(EntrySchema),
   idempotencyKey: z.string().optional(),
@@ -111,6 +115,7 @@ export async function updateVoucher(id: string, input: unknown) {
 
     if (parsed.data.entries) {
       validateForPost({ entries: parsed.data.entries as any, status: 'draft' })
+      await assertEntriesBookable(scope.tenantId, parsed.data.entries as any, tx)
       await tx
         .delete(journalLines)
         .where(and(eq(journalLines.voucherId, id), eq(journalLines.tenantId, scope.tenantId)))

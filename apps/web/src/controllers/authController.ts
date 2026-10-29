@@ -26,12 +26,13 @@ export async function login(input: unknown) {
   if (!email || !password) throw badRequest('email and password required')
 
   const candidates = await db
-    .select({ user: users, slug: tenants.slug, tenantName: tenants.name })
+    .select({ user: users, slug: tenants.slug, tenantName: tenants.name, status: tenants.status })
     .from(users)
     .innerJoin(tenants, eq(tenants.id, users.tenantId))
     .where(eq(users.email, email))
 
-  let matches = candidates.filter((c) => c.user.active)
+  // A suspended or archived company is not enterable, even by its own members.
+  let matches = candidates.filter((c) => c.user.active && c.status === 'active')
   if (company) matches = matches.filter((c) => c.slug === company)
 
   if (matches.length > 1 && !company) {
@@ -103,7 +104,7 @@ export async function register(input: unknown) {
   const hash = await argon2.hash(password, { type: argon2.argon2id })
 
   const { tenant, user } = await db.transaction(async (tx) => {
-    const [tenant] = await tx.insert(tenants).values({ name: companyName, slug, passwordHash: hash }).returning()
+    const [tenant] = await tx.insert(tenants).values({ name: companyName, slug, tenantCode: slug.toUpperCase(), passwordHash: hash }).returning()
     const [user] = await tx
       .insert(users)
       .values({

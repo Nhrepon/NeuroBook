@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { AlertTriangle, Loader2, Lock, LockOpen, Plus, X } from 'lucide-react'
 import { can, type Role } from '@neurobook/shared'
 import Field, { FormAlert } from '@/ui/Field'
+import Button, { buttonClass } from '@/ui/Button'
 
 interface FiscalPeriod {
   id: string
@@ -122,9 +123,11 @@ export default function FiscalPeriodsPanel() {
           type="button"
           onClick={() => canManage && setShowForm((v) => !v)}
           aria-disabled={!canManage}
-          className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-            canManage ? 'bg-blue-600 text-white hover:bg-blue-700' : 'cursor-not-allowed bg-gray-100 text-gray-400 shadow-none'
-          }`}
+          className={
+            canManage
+              ? buttonClass(showForm ? 'outline' : 'primary', 'sm')
+              : 'flex items-center gap-1.5 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-400'
+          }
         >
           {showForm ? <X size={13} aria-hidden /> : <Plus size={13} aria-hidden />}
           {showForm ? 'Cancel' : 'New period'}
@@ -153,14 +156,9 @@ export default function FiscalPeriodsPanel() {
             />
           </div>
           <div className="mt-4">
-            <button
-              type="submit"
-              disabled={!label.trim() || !dateValid || saving}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {saving && <Loader2 size={15} className="animate-spin" aria-hidden />}
+            <Button type="submit" loading={saving} disabled={!label.trim() || !dateValid}>
               {saving ? 'Saving...' : 'Create period'}
-            </button>
+            </Button>
           </div>
         </form>
       )}

@@ -1,10 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FileText, Loader2, Plus, Receipt, Trash2, X } from 'lucide-react'
+import { FileText, Plus, Receipt, Trash2, X } from 'lucide-react'
 import { VAT_RATES, formatTaka, toMinor } from '@neurobook/shared'
 import { parseTaka, sanitizeAmount } from '@/lib/money-input'
 import Field, { FormAlert } from '@/ui/Field'
+import PageHeader from '@/ui/PageHeader'
+import DataTable from '@/ui/DataTable'
+import Modal from '@/ui/Modal'
+import Button from '@/ui/Button'
 import type { LedgerAccount } from '@/ui/AccountPicker'
 
 interface InvoiceRow {
@@ -158,12 +162,26 @@ export default function InvoicesManager({ fixedType = 'ALL' }: { fixedType?: Fix
       .catch(() => {})
   }, [])
 
+  /** Next free `INV-/BILL-<year>-NNNN` for the given type, based on existing invoices. */
+  function nextNumber(t: 'sale' | 'purchase') {
+    const prefix = t === 'purchase' ? 'BILL' : 'INV'
+    const year = new Date().getFullYear()
+    const pattern = new RegExp(`^${prefix}-${year}-(\\d+)$`)
+    let max = 0
+    for (const r of rows) {
+      if (r.type !== t || !r.number) continue
+      const match = r.number.trim().match(pattern)
+      if (match) max = Math.max(max, Number(match[1]))
+    }
+    return `${prefix}-${year}-${String(max + 1).padStart(4, '0')}`
+  }
+
   function openForm(t: 'sale' | 'purchase' = 'sale') {
     const effective = fixedType !== 'ALL' ? fixedType : t
     setEditingId(null)
     setType(effective)
     setCustomer('')
-    setNumber(`${effective === 'purchase' ? 'BILL' : 'INV'}-${new Date().getFullYear()}-${String(rows.length + 1).padStart(4, '0')}`)
+    setNumber(nextNumber(effective))
     setDate(new Date().toISOString().slice(0, 10))
     setItems([newItem()])
     setShowForm(true)
@@ -285,7 +303,8 @@ export default function InvoicesManager({ fixedType = 'ALL' }: { fixedType?: Fix
         setError(body?.error?.message ?? (editingId ? 'Could not update the invoice.' : 'Could not create the invoice.'))
         return
       }
-      setNotice(editingId ? `Saved changes to ${number.trim() || 'the invoice'}.` : null)
+      const label = number.trim() || (editingId ? 'the invoice' : 'draft')
+      setNotice(editingId ? `Saved changes to ${label}.` : `Draft ${label} created. Post it from the list when ready.`)
       setCustomer('')
       setNumber('')
       setItems([])
@@ -352,6 +371,16 @@ export default function InvoicesManager({ fixedType = 'ALL' }: { fixedType?: Fix
   const showSaleButton = fixedType === 'ALL' || fixedType === 'sale'
   const showPurchaseButton = fixedType === 'ALL' || fixedType === 'purchase'
 
+  // Parties offered for the current invoice type: suppliers for purchases,
+  // customers for sales. Keeps unrelated names out of the autocomplete list.
+  const partyOptions = useMemo(() => {
+    const wanted = type === 'purchase' ? ['SUPPLIER', 'BOTH'] : ['CUSTOMER', 'BOTH']
+    return Object.entries(customers)
+      .filter(([id]) => wanted.includes(partyTypes[id]))
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [customers, partyTypes, type])
+
   return (
     <main className="mx-auto max-w-7xl">
       <datalist id="product-options">
@@ -360,49 +389,34 @@ export default function InvoicesManager({ fixedType = 'ALL' }: { fixedType?: Fix
         ))}
       </datalist>
       <datalist id="party-options">
-        {Object.entries(customers)
-          .filter(([, name]) => {
-            const id = Object.keys(customers).find((k) => customers[k] === name)
-            const t = id ? partyTypes[id] : undefined
-            const partyTypeForForm = type
-            if (partyTypeForForm === 'purchase') return t === 'SUPPLIER' || t === 'BOTH'
-            return t === 'CUSTOMER' || t === 'BOTH'
-          })
-          .map(([, name]) => <option key={name} value={name} />)}
+        {partyOptions.map((p) => (
+          <option key={p.id} value={p.name} />
+        ))}
       </datalist>
 
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
-            <Receipt size={22} className="text-blue-600" aria-hidden />
-            {title}
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">{description}</p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {showSaleButton && (
-            <button
-              type="button"
-              onClick={() => (showForm ? cancelForm() : openForm('sale'))}
-              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-            >
-              {showForm ? <X size={15} aria-hidden /> : <Plus size={15} aria-hidden />}
-              {showForm ? 'Cancel' : 'New sale invoice'}
-            </button>
-          )}
-          {!showForm && showPurchaseButton && (
-            <button
-              type="button"
-              onClick={() => openForm('purchase')}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3.5 py-2 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-            >
-              <Plus size={15} aria-hidden />
-              New purchase invoice
-            </button>
-          )}
-        </div>
-      </header>
+      <PageHeader icon={Receipt} title={title} description={description}>
+        {showForm ? (
+          <Button type="button" variant="outline" onClick={cancelForm}>
+            <X size={15} aria-hidden />
+            Cancel
+          </Button>
+        ) : (
+          <>
+            {showSaleButton && (
+              <Button type="button" onClick={() => openForm('sale')}>
+                <Plus size={15} aria-hidden />
+                New sale invoice
+              </Button>
+            )}
+            {showPurchaseButton && (
+              <Button type="button" variant="outline" onClick={() => openForm('purchase')}>
+                <Plus size={15} aria-hidden />
+                New purchase invoice
+              </Button>
+            )}
+          </>
+        )}
+      </PageHeader>
 
       {notice && (
         <p className="mb-4 flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
@@ -421,15 +435,15 @@ export default function InvoicesManager({ fixedType = 'ALL' }: { fixedType?: Fix
             {fixedType === 'ALL' && (
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">Type</label>
-                <select value={type} onChange={(e) => { const t = e.target.value as 'sale' | 'purchase'; setType(t); setNumber(`${t === 'purchase' ? 'BILL' : 'INV'}-${new Date().getFullYear()}-${String(rows.length + 1).padStart(4, '0')}`) }} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25">
+                <select value={type} onChange={(e) => { const t = e.target.value as 'sale' | 'purchase'; setType(t); setNumber(nextNumber(t)) }} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25">
                   <option value="sale">Sale (customer invoice)</option>
                   <option value="purchase">Purchase (supplier bill)</option>
                 </select>
               </div>
             )}
             <Field
-              label="Party"
-              placeholder="Rahim Traders"
+              label={type === 'purchase' ? 'Supplier' : 'Customer'}
+              placeholder={type === 'purchase' ? 'Supplier name' : 'Customer name'}
               required
               value={customer}
               onChange={(e) => setCustomer(e.target.value)}
@@ -593,14 +607,12 @@ export default function InvoicesManager({ fixedType = 'ALL' }: { fixedType?: Fix
           </div>
 
           <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 px-4 py-4 sm:px-5">
-            <button
-              type="submit"
-              disabled={!formValid || saving}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {saving && <Loader2 size={15} className="animate-spin" aria-hidden />}
+            <Button type="submit" loading={saving} disabled={!formValid}>
               {saving ? 'Saving...' : editingId ? 'Save changes' : 'Create draft'}
-            </button>
+            </Button>
+            <Button type="button" variant="outline" onClick={cancelForm}>
+              Cancel
+            </Button>
             <span className="text-xs text-gray-400">Posting happens from the list once the items look right.</span>
           </div>
         </form>
@@ -621,201 +633,160 @@ export default function InvoicesManager({ fixedType = 'ALL' }: { fixedType?: Fix
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Number</th>
-                <th className="px-4 py-2.5 font-medium">Type</th>
-                <th className="px-4 py-2.5 font-medium">Date</th>
-                <th className="px-4 py-2.5 font-medium">Customer</th>
-                <th className="px-4 py-2.5 text-right font-medium">Items</th>
-                <th className="px-4 py-2.5 text-right font-medium">Total</th>
-                <th className="px-4 py-2.5 text-right font-medium">VAT</th>
-                <th className="px-4 py-2.5 font-medium">Status</th>
-                <th className="px-4 py-2.5 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading && (
-                <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 size={15} className="animate-spin" aria-hidden />
-                      Loading invoices...
-                    </span>
-                  </td>
-                </tr>
-              )}
-
-              {!loading && visibleRows.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-gray-500">
-                    {rows.length === 0 ? 'No invoices yet. Create one to start billing.' : 'No invoices match this filter.'}
-                  </td>
-                </tr>
-              )}
-
-              {!loading &&
-                visibleRows.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-50/70">
-                    <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs text-gray-700">
-                      {row.number ?? row.id.slice(0, 8)}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset ${row.type === 'purchase' ? 'bg-amber-50 text-amber-700 ring-amber-200' : 'bg-blue-50 text-blue-700 ring-blue-200'}`}>
-                        {row.type}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">
-                      {new Date(row.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-900">
-                      {(row.customerId && customers[row.customerId]) ?? <span className="text-gray-400">—</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">
-                      {row.lineCount > 0 ? row.lineCount : <span className="text-gray-300">0</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{formatTaka(row.total)}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{formatTaka(row.vat)}</td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset ${STATUS_BADGE[row.status]}`}
-                      >
-                        {row.status}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5">
-                      <div className="flex items-center gap-3">
-                        {row.status === 'draft' && (
-                          <button
-                            type="button"
-                            onClick={() => startEdit(row)}
-                            disabled={loadingEdit}
-                            className="text-xs font-semibold text-gray-600 hover:underline disabled:opacity-50"
-                          >
-                            {loadingEdit && editingId === row.id ? 'Loading…' : 'Edit'}
-                          </button>
-                        )}
-                        {row.status === 'draft' && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPosting(row)
-                              setNotice(null)
-                              setError(null)
-                            }}
-                            className="text-xs font-semibold text-blue-600 hover:underline"
-                          >
-                            Post
-                          </button>
-                        )}
-                        <a
-                          href={`/api/v1/invoices/${row.id}/pdf`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-xs font-medium text-gray-500 hover:text-gray-700 hover:underline"
-                        >
-                          PDF
-                        </a>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <DataTable
+        columns={[
+          { key: 'number', label: 'Number' },
+          { key: 'type', label: 'Type' },
+          { key: 'date', label: 'Date' },
+          { key: 'customer', label: 'Customer' },
+          { key: 'items', label: 'Items', align: 'right' },
+          { key: 'total', label: 'Total', align: 'right' },
+          { key: 'vat', label: 'VAT', align: 'right' },
+          { key: 'status', label: 'Status' },
+          { key: 'actions', label: 'Actions' },
+        ]}
+        loading={loading}
+        loadingLabel="Loading invoices..."
+        isEmpty={visibleRows.length === 0}
+        empty={rows.length === 0 ? 'No invoices yet. Create one to start billing.' : 'No invoices match this filter.'}
+      >
+        {visibleRows.map((row) => (
+          <tr key={row.id} className="hover:bg-gray-50/70">
+            <td className="whitespace-nowrap px-4 py-2.5 font-mono text-xs text-gray-700">
+              {row.number ?? row.id.slice(0, 8)}
+            </td>
+            <td className="px-4 py-2.5">
+              <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset ${row.type === 'purchase' ? 'bg-amber-50 text-amber-700 ring-amber-200' : 'bg-blue-50 text-blue-700 ring-blue-200'}`}>
+                {row.type}
+              </span>
+            </td>
+            <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">
+              {new Date(row.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </td>
+            <td className="px-4 py-2.5 text-gray-900">
+              {(row.customerId && customers[row.customerId]) ?? <span className="text-gray-400">—</span>}
+            </td>
+            <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">
+              {row.lineCount > 0 ? row.lineCount : <span className="text-gray-300">0</span>}
+            </td>
+            <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{formatTaka(row.total)}</td>
+            <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{formatTaka(row.vat)}</td>
+            <td className="px-4 py-2.5">
+              <span
+                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset ${STATUS_BADGE[row.status]}`}
+              >
+                {row.status}
+              </span>
+            </td>
+            <td className="whitespace-nowrap px-4 py-2.5">
+              <div className="flex items-center gap-3">
+                {row.status === 'draft' && (
+                  <button
+                    type="button"
+                    onClick={() => startEdit(row)}
+                    disabled={loadingEdit}
+                    className="text-xs font-semibold text-gray-600 hover:underline disabled:opacity-50"
+                  >
+                    {loadingEdit && editingId === row.id ? 'Loading...' : 'Edit'}
+                  </button>
+                )}
+                {row.status === 'draft' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPosting(row)
+                      setNotice(null)
+                      setError(null)
+                    }}
+                    className="text-xs font-semibold text-blue-600 hover:underline"
+                  >
+                    Post
+                  </button>
+                )}
+                <a
+                  href={`/api/v1/invoices/${row.id}/pdf`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-medium text-gray-500 hover:text-gray-700 hover:underline"
+                >
+                  PDF
+                </a>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </DataTable>
 
       {posting && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-gray-900/40 px-4">
-          <div className="w-full max-w-lg rounded-xl border border-gray-200 bg-white p-5 shadow-xl">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-900">Post invoice {posting.number ?? posting.id.slice(0, 8)}</h2>
-                <p className="mt-1 text-xs text-gray-500">
-                  {formatTaka(posting.total)} total · {formatTaka(posting.vat)} VAT · posts a sales voucher and locks the invoice.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPosting(null)}
-                aria-label="Close"
-                className="rounded p-1 text-gray-400 transition hover:text-gray-600"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              {posting.type === 'purchase' ? (
-                <>
-                  <div>
-                    <label htmlFor="ap-account" className="mb-1.5 block text-sm font-medium text-gray-700">Payable account (AP)</label>
-                    <select id="ap-account" className={controlClass} value={apAccountId} onChange={(e) => setApAccountId(e.target.value)}>
-                      <option value="">Select liability account</option>
-                      {vatAccounts.map((a) => (<option key={a.id} value={a.id}>{a.code} · {a.name}</option>))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="expense-account" className="mb-1.5 block text-sm font-medium text-gray-700">Expense account</label>
-                    <select id="expense-account" className={controlClass} value={expenseAccountId} onChange={(e) => setExpenseAccountId(e.target.value)}>
-                      <option value="">Select expense account</option>
-                      {accounts.filter((a) => !a.isGroup && a.type === 'EXPENSE').map((a) => (<option key={a.id} value={a.id}>{a.code} · {a.name}</option>))}
-                    </select>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div>
-                    <label htmlFor="ar-account" className="mb-1.5 block text-sm font-medium text-gray-700">Receivable account</label>
-                    <select id="ar-account" className={controlClass} value={arAccountId} onChange={(e) => setArAccountId(e.target.value)}>
-                      <option value="">Select asset account</option>
-                      {arAccounts.map((a) => (<option key={a.id} value={a.id}>{a.code} · {a.name}</option>))}
-                    </select>
-                  </div>
-                  <div>
-                    <label htmlFor="revenue-account" className="mb-1.5 block text-sm font-medium text-gray-700">Revenue account</label>
-                    <select id="revenue-account" className={controlClass} value={revenueAccountId} onChange={(e) => setRevenueAccountId(e.target.value)}>
-                      <option value="">Select revenue account</option>
-                      {revenueAccounts.map((a) => (<option key={a.id} value={a.id}>{a.code} · {a.name}</option>))}
-                    </select>
-                  </div>
-                </>
-              )}
-              <div>
-                <label htmlFor="vat-account" className="mb-1.5 block text-sm font-medium text-gray-700">VAT account</label>
-                <select id="vat-account" className={controlClass} value={vatAccountId} onChange={(e) => setVatAccountId(e.target.value)}>
-                  <option value="">Select VAT account</option>
-                  {vatAccounts.map((a) => (<option key={a.id} value={a.id}>{a.code} · {a.name}</option>))}
-                </select>
-              </div>
-              <p className="text-xs text-gray-400">
-                {posting.vat > 0 ? `VAT of ${formatTaka(posting.vat)} is ${posting.type === 'purchase' ? 'debited to VAT input' : 'credited to VAT payable'}.` : 'This invoice carries no VAT.'}
-              </p>
-            </div>
-
-            <div className="mt-5 flex items-center gap-2 border-t border-gray-100 pt-4">
-              <button
+        <Modal
+          title={`Post invoice ${posting.number ?? posting.id.slice(0, 8)}`}
+          subtitle={`${formatTaka(posting.total)} total · ${formatTaka(posting.vat)} VAT · posts a ${posting.type === 'purchase' ? 'purchase' : 'sales'} voucher and locks the invoice.`}
+          size="lg"
+          onClose={() => setPosting(null)}
+          footer={
+            <>
+              <Button
                 type="button"
                 onClick={post}
-                disabled={postBusy || (posting.type === 'purchase' ? (!apAccountId || !expenseAccountId) : (!arAccountId || !revenueAccountId)) || (posting.vat > 0 && !vatAccountId)}
-                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                loading={postBusy}
+                disabled={(posting.type === 'purchase' ? (!apAccountId || !expenseAccountId) : (!arAccountId || !revenueAccountId)) || (posting.vat > 0 && !vatAccountId)}
               >
-                {postBusy && <Loader2 size={15} className="animate-spin" aria-hidden />}
                 {postBusy ? 'Posting...' : 'Post invoice'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setPosting(null)}
-                className="text-sm font-medium text-gray-500 transition hover:text-gray-700"
-              >
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setPosting(null)}>
                 Cancel
-              </button>
+              </Button>
+            </>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            {posting.type === 'purchase' ? (
+              <>
+                <div>
+                  <label htmlFor="ap-account" className="mb-1.5 block text-sm font-medium text-gray-700">Payable account (AP)</label>
+                  <select id="ap-account" className={controlClass} value={apAccountId} onChange={(e) => setApAccountId(e.target.value)}>
+                    <option value="">Select liability account</option>
+                    {vatAccounts.map((a) => (<option key={a.id} value={a.id}>{a.code} · {a.name}</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="expense-account" className="mb-1.5 block text-sm font-medium text-gray-700">Expense account</label>
+                  <select id="expense-account" className={controlClass} value={expenseAccountId} onChange={(e) => setExpenseAccountId(e.target.value)}>
+                    <option value="">Select expense account</option>
+                    {accounts.filter((a) => !a.isGroup && a.type === 'EXPENSE').map((a) => (<option key={a.id} value={a.id}>{a.code} · {a.name}</option>))}
+                  </select>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <label htmlFor="ar-account" className="mb-1.5 block text-sm font-medium text-gray-700">Receivable account</label>
+                  <select id="ar-account" className={controlClass} value={arAccountId} onChange={(e) => setArAccountId(e.target.value)}>
+                    <option value="">Select asset account</option>
+                    {arAccounts.map((a) => (<option key={a.id} value={a.id}>{a.code} · {a.name}</option>))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="revenue-account" className="mb-1.5 block text-sm font-medium text-gray-700">Revenue account</label>
+                  <select id="revenue-account" className={controlClass} value={revenueAccountId} onChange={(e) => setRevenueAccountId(e.target.value)}>
+                    <option value="">Select revenue account</option>
+                    {revenueAccounts.map((a) => (<option key={a.id} value={a.id}>{a.code} · {a.name}</option>))}
+                  </select>
+                </div>
+              </>
+            )}
+            <div>
+              <label htmlFor="vat-account" className="mb-1.5 block text-sm font-medium text-gray-700">VAT account</label>
+              <select id="vat-account" className={controlClass} value={vatAccountId} onChange={(e) => setVatAccountId(e.target.value)}>
+                <option value="">Select VAT account</option>
+                {vatAccounts.map((a) => (<option key={a.id} value={a.id}>{a.code} · {a.name}</option>))}
+              </select>
             </div>
+            <p className="text-xs text-gray-400">
+              {posting.vat > 0 ? `VAT of ${formatTaka(posting.vat)} is ${posting.type === 'purchase' ? 'debited to VAT input' : 'credited to VAT payable'}.` : 'This invoice carries no VAT.'}
+            </p>
           </div>
-        </div>
+        </Modal>
       )}
     </main>
   )

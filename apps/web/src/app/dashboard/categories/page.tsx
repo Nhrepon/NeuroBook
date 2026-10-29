@@ -1,9 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Loader2, Plus, Search, Tags, X } from 'lucide-react'
+import { Loader2, Plus, Tags, X } from 'lucide-react'
 import { can, type Role } from '@neurobook/shared'
 import Field, { FormAlert } from '@/ui/Field'
+import PageHeader from '@/ui/PageHeader'
+import Card from '@/ui/Card'
+import RoleNotice from '@/ui/RoleNotice'
+import SearchInput from '@/ui/SearchInput'
+import DataTable from '@/ui/DataTable'
 
 interface Category {
   id: string
@@ -152,15 +157,11 @@ export default function CategoriesPage() {
 
   return (
     <main className="mx-auto max-w-7xl">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
-            <Tags size={22} className="text-blue-600" aria-hidden />
-            Product categories
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">Groups used to organise products and filter the product list.</p>
-        </div>
-
+      <PageHeader
+        icon={Tags}
+        title="Product categories"
+        description="Groups used to organise products and filter the product list."
+      >
         <button
           type="button"
           onClick={() => canWrite && setShowForm((v) => !v)}
@@ -172,114 +173,89 @@ export default function CategoriesPage() {
           {showForm ? <X size={15} aria-hidden /> : <Plus size={15} aria-hidden />}
           {showForm ? 'Cancel' : 'New category'}
         </button>
-      </header>
+      </PageHeader>
 
-      {role && !canWrite && (
-        <p className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
-          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden />
-          Your role can view categories but not change them.
-        </p>
-      )}
+      {role && !canWrite && <RoleNotice>Your role can view categories but not change them.</RoleNotice>}
 
       {showForm && canWrite && (
-        <form onSubmit={create} className="mb-5 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-          <h2 className="text-sm font-semibold text-gray-900">New category</h2>
-          <div className="mt-4 flex items-end gap-2">
-            <div className="flex-1">
-              <Field label="Name" required placeholder="e.g. Stationery" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} />
+        <Card className="mb-5 p-4 sm:p-5">
+          <form onSubmit={create}>
+            <h2 className="text-sm font-semibold text-gray-900">New category</h2>
+            <div className="mt-4 flex items-end gap-2">
+              <div className="flex-1">
+                <Field label="Name" required placeholder="e.g. Stationery" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} />
+              </div>
+              <button type="submit" disabled={!newCatName.trim() || saving} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
+                {saving && <Loader2 size={15} className="animate-spin" aria-hidden />}
+                {saving ? 'Saving...' : 'Save category'}
+              </button>
             </div>
-            <button type="submit" disabled={!newCatName.trim() || saving} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
-              {saving && <Loader2 size={15} className="animate-spin" aria-hidden />}
-              {saving ? 'Saving...' : 'Save category'}
-            </button>
-          </div>
-        </form>
+          </form>
+        </Card>
       )}
 
       {error && <FormAlert message={error} />}
 
-      <div className="mb-3 flex min-w-[200px] max-w-sm items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/25">
-        <Search size={15} className="shrink-0 text-gray-400" aria-hidden />
-        <input className="w-full bg-transparent py-2 text-sm outline-none placeholder:text-gray-400" placeholder="Search categories" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Search categories" />
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <SearchInput value={query} onChange={setQuery} placeholder="Search categories" />
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Name</th>
-                <th className="px-4 py-2.5 text-right font-medium">Products</th>
-                <th className="px-4 py-2.5 font-medium text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading && (
-                <tr>
-                  <td colSpan={3} className="px-4 py-8 text-center text-gray-500">
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 size={15} className="animate-spin" aria-hidden />
-                      Loading categories...
-                    </span>
-                  </td>
-                </tr>
+      <DataTable
+        columns={[
+          { key: 'name', label: 'Name' },
+          { key: 'products', label: 'Products', align: 'right' },
+          { key: 'actions', label: 'Actions', align: 'right' },
+        ]}
+        loading={loading}
+        loadingLabel="Loading categories..."
+        isEmpty={visible.length === 0}
+        empty={categories.length === 0 ? 'No categories yet. Add one to group your products.' : 'No categories match this search.'}
+      >
+        {visible.map((c) => (
+          <tr key={c.id} className="hover:bg-gray-50/70">
+            <td className="px-4 py-2.5 font-medium text-gray-900">
+              {editingId === c.id ? (
+                <input
+                  autoFocus
+                  value={editingName}
+                  onChange={(e) => setEditingName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      void saveEdit(c.id)
+                    }
+                    if (e.key === 'Escape') {
+                      setEditingId(null)
+                      setEditingName('')
+                    }
+                  }}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                />
+              ) : (
+                c.name
               )}
-              {!loading && visible.length === 0 && (
-                <tr>
-                  <td colSpan={3} className="px-4 py-10 text-center text-gray-500">
-                    {categories.length === 0 ? 'No categories yet. Add one to group your products.' : 'No categories match this search.'}
-                  </td>
-                </tr>
+            </td>
+            <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{counts.get(c.name) ?? 0}</td>
+            <td className="px-4 py-2.5 text-right">
+              {canWrite && (
+                <div className="flex items-center justify-end gap-3">
+                  {editingId === c.id ? (
+                    <>
+                      <button type="button" onClick={() => saveEdit(c.id)} disabled={saving} className="text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50">Save</button>
+                      <button type="button" onClick={() => { setEditingId(null); setEditingName('') }} className="text-xs font-semibold text-gray-500 hover:underline">Cancel</button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" onClick={() => { setEditingId(c.id); setEditingName(c.name) }} className="text-xs font-semibold text-blue-600 hover:underline">Rename</button>
+                      <button type="button" onClick={() => remove(c.id, c.name)} className="text-xs font-semibold text-red-600 hover:underline">Delete</button>
+                    </>
+                  )}
+                </div>
               )}
-              {!loading &&
-                visible.map((c) => (
-                  <tr key={c.id} className="hover:bg-gray-50/70">
-                    <td className="px-4 py-2.5 font-medium text-gray-900">
-                      {editingId === c.id ? (
-                        <input
-                          autoFocus
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault()
-                              void saveEdit(c.id)
-                            }
-                            if (e.key === 'Escape') {
-                              setEditingId(null)
-                              setEditingName('')
-                            }
-                          }}
-                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
-                        />
-                      ) : (
-                        c.name
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{counts.get(c.name) ?? 0}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      {canWrite && (
-                        <div className="flex items-center justify-end gap-3">
-                          {editingId === c.id ? (
-                            <>
-                              <button type="button" onClick={() => saveEdit(c.id)} disabled={saving} className="text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50">Save</button>
-                              <button type="button" onClick={() => { setEditingId(null); setEditingName('') }} className="text-xs font-semibold text-gray-500 hover:underline">Cancel</button>
-                            </>
-                          ) : (
-                            <>
-                              <button type="button" onClick={() => { setEditingId(c.id); setEditingName(c.name) }} className="text-xs font-semibold text-blue-600 hover:underline">Rename</button>
-                              <button type="button" onClick={() => remove(c.id, c.name)} className="text-xs font-semibold text-red-600 hover:underline">Delete</button>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </td>
+          </tr>
+        ))}
+      </DataTable>
     </main>
   )
 }

@@ -1,9 +1,13 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Landmark, Loader2, Plus, X } from 'lucide-react'
+import { Landmark, Plus, X } from 'lucide-react'
 import { can, formatTaka, toMinor, type Role } from '@neurobook/shared'
 import Field, { FormAlert } from '@/ui/Field'
+import PageHeader from '@/ui/PageHeader'
+import RoleNotice from '@/ui/RoleNotice'
+import DataTable from '@/ui/DataTable'
+import Button, { buttonClass } from '@/ui/Button'
 import { parseTaka, sanitizeAmount } from '@/lib/money-input'
 
 interface BankAccount {
@@ -169,9 +173,11 @@ export default function BankPage() {
       type="button"
       onClick={onClick}
       aria-disabled={!canWrite}
-      className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-        canWrite ? 'bg-blue-600 text-white hover:bg-blue-700' : 'cursor-not-allowed bg-gray-100 text-gray-400 shadow-none'
-      }`}
+      className={
+        canWrite
+          ? buttonClass(open ? 'outline' : 'primary', 'sm')
+          : 'flex items-center gap-1.5 rounded-lg bg-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-400'
+      }
     >
       {open ? <X size={13} aria-hidden /> : <Plus size={13} aria-hidden />}
       {open ? 'Cancel' : label}
@@ -180,20 +186,13 @@ export default function BankPage() {
 
   return (
     <main className="mx-auto max-w-7xl">
-      <header className="mb-5">
-        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
-          <Landmark size={22} className="text-blue-600" aria-hidden />
-          Bank
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">Bank accounts and the statement lines you reconcile against posted vouchers.</p>
-      </header>
+      <PageHeader
+        icon={Landmark}
+        title="Bank"
+        description="Bank accounts and the statement lines you reconcile against posted vouchers."
+      />
 
-      {role && !canWrite && (
-        <p className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
-          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden />
-          Your role can view bank data but not change it.
-        </p>
-      )}
+      {role && !canWrite && <RoleNotice>Your role can view bank data but not change it.</RoleNotice>}
 
       {notice && (
         <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">{notice}</p>
@@ -221,60 +220,34 @@ export default function BankPage() {
               />
             </div>
             <div className="mt-5 border-t border-gray-100 pt-4">
-              <button
-                type="submit"
-                disabled={!name.trim() || saving}
-                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {saving && <Loader2 size={15} className="animate-spin" aria-hidden />}
+              <Button type="submit" loading={saving} disabled={!name.trim()}>
                 {saving ? 'Saving...' : 'Save account'}
-              </button>
+              </Button>
             </div>
           </form>
         )}
 
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-                <tr>
-                  <th className="px-4 py-2.5 font-medium">Name</th>
-                  <th className="px-4 py-2.5 font-medium">Bank</th>
-                  <th className="px-4 py-2.5 font-medium">Account no.</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Opening balance</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {loading && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
-                      <span className="inline-flex items-center gap-2">
-                        <Loader2 size={15} className="animate-spin" aria-hidden />
-                        Loading bank data...
-                      </span>
-                    </td>
-                  </tr>
-                )}
-                {!loading && accounts.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-10 text-center text-gray-500">
-                      No bank accounts yet.
-                    </td>
-                  </tr>
-                )}
-                {!loading &&
-                  accounts.map((a) => (
-                    <tr key={a.id} className="hover:bg-gray-50/70">
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{a.name}</td>
-                      <td className="px-4 py-2.5 text-gray-700">{a.bankName || <span className="text-gray-400">—</span>}</td>
-                      <td className="px-4 py-2.5 font-mono text-xs text-gray-600">{a.accountNumber || <span className="text-gray-400">—</span>}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{formatTaka(a.openingBalance)}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <DataTable
+          columns={[
+            { key: 'name', label: 'Name' },
+            { key: 'bank', label: 'Bank' },
+            { key: 'number', label: 'Account no.' },
+            { key: 'opening', label: 'Opening balance', align: 'right' },
+          ]}
+          loading={loading}
+          loadingLabel="Loading bank data..."
+          isEmpty={accounts.length === 0}
+          empty="No bank accounts yet."
+        >
+          {accounts.map((a) => (
+            <tr key={a.id} className="hover:bg-gray-50/70">
+              <td className="px-4 py-2.5 font-medium text-gray-900">{a.name}</td>
+              <td className="px-4 py-2.5 text-gray-700">{a.bankName || <span className="text-gray-400">—</span>}</td>
+              <td className="px-4 py-2.5 font-mono text-xs text-gray-600">{a.accountNumber || <span className="text-gray-400">—</span>}</td>
+              <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{formatTaka(a.openingBalance)}</td>
+            </tr>
+          ))}
+        </DataTable>
       </section>
 
       <section>
@@ -327,64 +300,48 @@ export default function BankPage() {
               />
             </div>
             <div className="mt-5 border-t border-gray-100 pt-4">
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {saving && <Loader2 size={15} className="animate-spin" aria-hidden />}
+              <Button type="submit" loading={saving}>
                 {saving ? 'Saving...' : 'Record transaction'}
-              </button>
+              </Button>
             </div>
           </form>
         )}
 
         {error && <div className="mb-3"><FormAlert message={error} /></div>}
 
-        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-sm">
-              <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-                <tr>
-                  <th className="px-4 py-2.5 font-medium">Date</th>
-                  <th className="px-4 py-2.5 font-medium">Account</th>
-                  <th className="px-4 py-2.5 font-medium">Description</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Amount</th>
-                  <th className="px-4 py-2.5 font-medium">Direction</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {!loading && sortedTxs.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-10 text-center text-gray-500">
-                      No bank transactions yet.
-                    </td>
-                  </tr>
-                )}
-                {!loading &&
-                  sortedTxs.map((t) => (
-                    <tr key={t.id} className="hover:bg-gray-50/70">
-                      <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">
-                        {new Date(t.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-900">{accountName[t.bankAccountId] ?? <span className="text-gray-400">—</span>}</td>
-                      <td className="px-4 py-2.5 text-gray-700">{t.description || <span className="text-gray-400">—</span>}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums text-gray-900">{formatTaka(t.amount)}</td>
-                      <td className="px-4 py-2.5">
-                        <span
-                          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
-                            t.type === 'debit' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-red-50 text-red-700 ring-red-200'
-                          }`}
-                        >
-                          {t.type === 'debit' ? 'Money in' : 'Money out'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <DataTable
+          columns={[
+            { key: 'date', label: 'Date' },
+            { key: 'account', label: 'Account' },
+            { key: 'description', label: 'Description' },
+            { key: 'amount', label: 'Amount', align: 'right' },
+            { key: 'direction', label: 'Direction' },
+          ]}
+          loading={loading}
+          loadingLabel="Loading bank data..."
+          isEmpty={sortedTxs.length === 0}
+          empty="No bank transactions yet."
+        >
+          {sortedTxs.map((t) => (
+            <tr key={t.id} className="hover:bg-gray-50/70">
+              <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">
+                {new Date(t.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+              </td>
+              <td className="px-4 py-2.5 text-gray-900">{accountName[t.bankAccountId] ?? <span className="text-gray-400">—</span>}</td>
+              <td className="px-4 py-2.5 text-gray-700">{t.description || <span className="text-gray-400">—</span>}</td>
+              <td className="px-4 py-2.5 text-right tabular-nums text-gray-900">{formatTaka(t.amount)}</td>
+              <td className="px-4 py-2.5">
+                <span
+                  className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${
+                    t.type === 'debit' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : 'bg-red-50 text-red-700 ring-red-200'
+                  }`}
+                >
+                  {t.type === 'debit' ? 'Money in' : 'Money out'}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </DataTable>
       </section>
     </main>
   )

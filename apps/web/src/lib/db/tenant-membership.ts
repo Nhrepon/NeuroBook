@@ -39,10 +39,10 @@ export async function sessionProfile(scope: RequestScope): Promise<SessionProfil
   if (user.tenantId !== scope.tenantId) return null
 
   const [tenant] = await db
-    .select({ id: tenants.id, name: tenants.name, slug: tenants.slug })
+    .select({ id: tenants.id, name: tenants.name, slug: tenants.slug, status: tenants.status })
     .from(tenants)
     .where(eq(tenants.id, scope.tenantId))
-  if (!tenant) return null
+  if (!tenant || tenant.status !== 'active') return null
 
   return {
     id: user.id,
@@ -65,7 +65,7 @@ export async function listSwitchableCompanies(scope: RequestScope, email: string
     .select({ id: tenants.id, name: tenants.name, slug: tenants.slug, role: users.role })
     .from(users)
     .innerJoin(tenants, eq(tenants.id, users.tenantId))
-    .where(and(eq(users.email, email), eq(users.active, true)))
+    .where(and(eq(users.email, email), eq(users.active, true), eq(tenants.status, 'active')))
 
   return memberships
     .map((row) => ({ ...row, current: row.id === scope.tenantId }))
@@ -100,7 +100,7 @@ export async function findSwitchTarget(email: string, slug: string): Promise<Swi
     })
     .from(users)
     .innerJoin(tenants, eq(tenants.id, users.tenantId))
-    .where(and(eq(users.email, email), eq(users.active, true), eq(tenants.slug, slug)))
+    .where(and(eq(users.email, email), eq(users.active, true), eq(tenants.slug, slug), eq(tenants.status, 'active')))
 
   if (!row) return null
 

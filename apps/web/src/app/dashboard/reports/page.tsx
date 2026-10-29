@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { BarChart3, Check, Loader2, Scale } from 'lucide-react'
 import { formatTaka } from '@neurobook/shared'
 import { FormAlert } from '@/ui/Field'
+import PageHeader from '@/ui/PageHeader'
 
 type ReportType = 'trial-balance' | 'profit-loss' | 'balance-sheet'
 
@@ -42,13 +43,11 @@ export default function ReportsPage() {
 
   return (
     <main className="mx-auto max-w-7xl">
-      <header className="mb-5">
-        <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
-          <BarChart3 size={22} className="text-blue-600" aria-hidden />
-          Reports
-        </h1>
-        <p className="mt-1 text-sm text-gray-500">Built live from posted journal lines across the company.</p>
-      </header>
+      <PageHeader
+        icon={BarChart3}
+        title="Reports"
+        description="Built live from posted journal lines across the company."
+      />
 
       <div className="mb-5 inline-flex rounded-lg border border-gray-200 bg-white p-1">
         {TABS.map((t) => (

@@ -2,10 +2,15 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { AlertTriangle, FileText, Loader2, Plus, Search } from 'lucide-react'
+import { FileText, Plus } from 'lucide-react'
 import { canAny, type Role, type VoucherType } from '@neurobook/shared'
 import { voucherStatusBadge, voucherTypeLabel, voucherWritePermissions } from '@/lib/voucher-ui'
 import { FormAlert } from '@/ui/Field'
+import PageHeader from '@/ui/PageHeader'
+import RoleNotice from '@/ui/RoleNotice'
+import SearchInput from '@/ui/SearchInput'
+import DataTable from '@/ui/DataTable'
+import { StatCard, StatGrid } from '@/ui/StatCard'
 
 interface VoucherRow {
   id: string
@@ -73,17 +78,11 @@ export default function VouchersPage() {
 
   return (
     <main className="mx-auto max-w-7xl">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight text-gray-900">
-            <FileText size={22} className="text-blue-600" aria-hidden />
-            Vouchers
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Every accounting entry for this company. Posted vouchers are immutable and reversed, never edited.
-          </p>
-        </div>
-
+      <PageHeader
+        icon={FileText}
+        title="Vouchers"
+        description="Every accounting entry for this company. Posted vouchers are immutable and reversed, never edited."
+      >
         <Link
           href="/dashboard/vouchers/new"
           aria-disabled={!canRaise}
@@ -99,41 +98,18 @@ export default function VouchersPage() {
           <Plus size={15} aria-hidden />
           New voucher
         </Link>
-      </header>
+      </PageHeader>
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-          <p className="text-xs font-medium text-gray-500">Drafts</p>
-          <p className="mt-1 text-xl font-semibold text-amber-600">{counts.draft}</p>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-          <p className="text-xs font-medium text-gray-500">Posted</p>
-          <p className="mt-1 text-xl font-semibold text-emerald-600">{counts.posted}</p>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white px-4 py-3">
-          <p className="text-xs font-medium text-gray-500">Reversed</p>
-          <p className="mt-1 text-xl font-semibold text-gray-500">{counts.reversed}</p>
-        </div>
-      </div>
+      <StatGrid>
+        <StatCard label="Drafts" value={counts.draft} tone="text-amber-600" />
+        <StatCard label="Posted" value={counts.posted} tone="text-emerald-600" />
+        <StatCard label="Reversed" value={counts.reversed} tone="text-gray-500" />
+      </StatGrid>
 
-      {role && !canRaise && (
-        <p className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
-          <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden />
-          Your role can read vouchers but not raise them.
-        </p>
-      )}
+      {role && !canRaise && <RoleNotice>Your role can read vouchers but not raise them.</RoleNotice>}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex min-w-[200px] flex-1 items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/25">
-          <Search size={15} className="shrink-0 text-gray-400" aria-hidden />
-          <input
-            className="w-full bg-transparent py-2 text-sm outline-none placeholder:text-gray-400"
-            placeholder="Search narration, number or type"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search vouchers"
-          />
-        </div>
+        <SearchInput value={query} onChange={setQuery} placeholder="Search narration, number or type" className="max-w-sm flex-1" />
 
         <select
           value={typeFilter}
@@ -164,78 +140,57 @@ export default function VouchersPage() {
 
       {error && <FormAlert message={error} />}
 
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead className="bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
-              <tr>
-                <th className="px-4 py-2.5 font-medium">Number</th>
-                <th className="px-4 py-2.5 font-medium">Date</th>
-                <th className="px-4 py-2.5 font-medium">Type</th>
-                <th className="px-4 py-2.5 font-medium">Narration</th>
-                <th className="px-4 py-2.5 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {loading && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                    <span className="inline-flex items-center gap-2">
-                      <Loader2 size={15} className="animate-spin" aria-hidden />
-                      Loading vouchers…
-                    </span>
-                  </td>
-                </tr>
-              )}
-
-              {!loading && visible.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-gray-500">
-                    {rows.length === 0 ? (
-                      <span className="inline-flex flex-col items-center gap-2">
-                        No vouchers yet. Raise one to start your day book.
-                        <Link href="/dashboard/vouchers/new" className="font-semibold text-blue-600 hover:underline">
-                          New voucher
-                        </Link>
-                      </span>
-                    ) : (
-                      'No vouchers match these filters.'
-                    )}
-                  </td>
-                </tr>
-              )}
-
-              {!loading &&
-                visible.map((row) => (
-                  <tr key={row.id} className="hover:bg-gray-50/70">
-                    <td className="whitespace-nowrap px-4 py-2.5">
-                      <Link
-                        href={`/dashboard/vouchers/${row.id}`}
-                        className="font-mono text-xs font-medium text-blue-600 hover:underline"
-                      >
-                        {row.sequenceNumber ?? 'draft'}
-                      </Link>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">
-                      {new Date(row.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">{voucherTypeLabel(row.voucherType)}</td>
-                    <td className="max-w-[280px] truncate px-4 py-2.5 text-gray-900" title={row.narration}>
-                      {row.narration || <span className="text-gray-400">—</span>}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset ${voucherStatusBadge(row.status)}`}
-                      >
-                        {row.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <DataTable
+        columns={[
+          { key: 'number', label: 'Number' },
+          { key: 'date', label: 'Date' },
+          { key: 'type', label: 'Type' },
+          { key: 'narration', label: 'Narration' },
+          { key: 'status', label: 'Status' },
+        ]}
+        loading={loading}
+        loadingLabel="Loading vouchers..."
+        isEmpty={visible.length === 0}
+        empty={
+          rows.length === 0 ? (
+            <span className="inline-flex flex-col items-center gap-2">
+              No vouchers yet. Raise one to start your day book.
+              <Link href="/dashboard/vouchers/new" className="font-semibold text-blue-600 hover:underline">
+                New voucher
+              </Link>
+            </span>
+          ) : (
+            'No vouchers match these filters.'
+          )
+        }
+      >
+        {visible.map((row) => (
+          <tr key={row.id} className="hover:bg-gray-50/70">
+            <td className="whitespace-nowrap px-4 py-2.5">
+              <Link
+                href={`/dashboard/vouchers/${row.id}`}
+                className="font-mono text-xs font-medium text-blue-600 hover:underline"
+              >
+                {row.sequenceNumber ?? 'draft'}
+              </Link>
+            </td>
+            <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">
+              {new Date(row.date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+            </td>
+            <td className="whitespace-nowrap px-4 py-2.5 text-gray-700">{voucherTypeLabel(row.voucherType)}</td>
+            <td className="max-w-[280px] truncate px-4 py-2.5 text-gray-900" title={row.narration}>
+              {row.narration || <span className="text-gray-400">—</span>}
+            </td>
+            <td className="px-4 py-2.5">
+              <span
+                className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset ${voucherStatusBadge(row.status)}`}
+              >
+                {row.status}
+              </span>
+            </td>
+          </tr>
+        ))}
+      </DataTable>
 
       {visible.length > 0 && (
         <p className="mt-3 text-xs text-gray-400">

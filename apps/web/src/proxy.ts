@@ -3,7 +3,7 @@ import { jwtVerify } from 'jose'
 import { can, canAny, normalizeRole } from '@neurobook/shared'
 import { pagePermission, requiredPermissions } from '@/lib/rbac'
 import { db } from '@/lib/db/client'
-import { users } from '@/lib/db/schema'
+import { tenants, users } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 
 const secret = new TextEncoder().encode(process.env.JWT_SECRET ?? 'dev-secret-change-me-please-32-chars')
@@ -60,6 +60,19 @@ function sessionRevoked(pathname: string, req: NextRequest) {
   return res
 }
 
+/** The session's company has been suspended or archived; it can no longer operate. */
+function companyInactive(pathname: string, req: NextRequest) {
+  if (isApi(pathname)) {
+    return NextResponse.json(
+      { error: { code: 'TENANT_INACTIVE', message: 'This company is suspended. Contact your administrator.' } },
+      { status: 403 },
+    )
+  }
+  const res = NextResponse.redirect(new URL('/login?suspended=1', req.url))
+  res.headers.set('Set-Cookie', 'access_token=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0')
+  return res
+}
+
 export default async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl
 
@@ -103,8 +116,15 @@ export default async function proxy(req: NextRequest) {
   const sub = String(payload.sub)
   const tid = String(payload.tid)
   const [session] = await db
-    .select({ role: users.role, active: users.active, tenantId: users.tenantId, tokenVersion: users.tokenVersion })
+    .select({
+      role: users.role,
+      active: users.active,
+      tenantId: users.tenantId,
+      tokenVersion: users.tokenVersion,
+      tenantStatus: tenants.status,
+    })
     .from(users)
+    .innerJoin(tenants, eq(tenants.id, users.tenantId))
     .where(eq(users.id, sub))
 
   if (
@@ -115,6 +135,8 @@ export default async function proxy(req: NextRequest) {
   ) {
     return sessionRevoked(pathname, req)
   }
+
+  if (session.tenantStatus !== 'active') return companyInactive(pathname, req)
 
   const role = normalizeRole(session.role)
 

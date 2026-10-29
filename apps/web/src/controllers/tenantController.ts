@@ -39,6 +39,7 @@ export async function getAllTenants() {
       id: tenants.id,
       name: tenants.name,
       slug: tenants.slug,
+      code: tenants.tenantCode,
       passwordHash: tenants.passwordHash,
       createdAt: tenants.createdAt,
     })
@@ -89,7 +90,7 @@ export async function createTenant(input: unknown) {
   const created = await db.transaction(async (tx) => {
     const [tenant] = await tx
       .insert(tenants)
-      .values({ name, slug, passwordHash: companyPasswordHash })
+      .values({ name, slug, tenantCode: slug.toUpperCase(), passwordHash: companyPasswordHash })
       .returning()
 
     await tx.insert(companySettings).values({ tenantId: tenant.id, companyName: name })
