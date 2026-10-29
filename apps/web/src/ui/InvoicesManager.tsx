@@ -9,6 +9,7 @@ import PageHeader from '@/ui/PageHeader'
 import DataTable from '@/ui/DataTable'
 import Modal from '@/ui/Modal'
 import Button from '@/ui/Button'
+import InvoiceSettlement, { type SettleTarget } from '@/ui/InvoiceSettlement'
 import type { LedgerAccount } from '@/ui/AccountPicker'
 
 interface InvoiceRow {
@@ -19,7 +20,8 @@ interface InvoiceRow {
   date: string
   total: number
   vat: number
-  status: 'draft' | 'sent' | 'paid' | 'cancelled'
+  paid: number
+  status: 'draft' | 'sent' | 'partially_paid' | 'paid' | 'cancelled'
   lineCount: number
 }
 
@@ -45,6 +47,7 @@ type FixedType = 'ALL' | 'sale' | 'purchase'
 const STATUS_BADGE: Record<InvoiceRow['status'], string> = {
   draft: 'bg-amber-50 text-amber-700 ring-amber-200',
   sent: 'bg-blue-50 text-blue-700 ring-blue-200',
+  partially_paid: 'bg-indigo-50 text-indigo-700 ring-indigo-200',
   paid: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
   cancelled: 'bg-gray-100 text-gray-600 ring-gray-300',
 }
@@ -72,6 +75,7 @@ export default function InvoicesManager({ fixedType = 'ALL' }: { fixedType?: Fix
   const [saving, setSaving] = useState(false)
 
   const [posting, setPosting] = useState<InvoiceRow | null>(null)
+  const [settling, setSettling] = useState<SettleTarget | null>(null)
   const [arAccountId, setArAccountId] = useState('')
   const [revenueAccountId, setRevenueAccountId] = useState('')
   const [apAccountId, setApAccountId] = useState('')
@@ -156,7 +160,7 @@ export default function InvoicesManager({ fixedType = 'ALL' }: { fixedType?: Fix
         setArAccountId(list.find((a) => a.code === '1200')?.id ?? list.find((a) => a.type === 'ASSET' && !a.isGroup)?.id ?? '')
         setRevenueAccountId(list.find((a) => a.code === '4000')?.id ?? list.find((a) => a.type === 'REVENUE' && !a.isGroup)?.id ?? '')
         setVatAccountId(list.find((a) => a.code === '2100')?.id ?? list.find((a) => a.type === 'LIABILITY' && !a.isGroup)?.id ?? '')
-        setApAccountId(list.find((a) => a.code === '2000')?.id ?? list.find((a) => a.type === 'LIABILITY' && !a.isGroup)?.id ?? '')
+        setApAccountId(list.find((a) => a.code === '2200')?.id ?? list.find((a) => a.type === 'LIABILITY' && !a.isGroup)?.id ?? '')
         setExpenseAccountId(list.find((a) => a.code === '5000')?.id ?? list.find((a) => a.type === 'EXPENSE' && !a.isGroup)?.id ?? '')
       })
       .catch(() => {})
@@ -642,6 +646,7 @@ export default function InvoicesManager({ fixedType = 'ALL' }: { fixedType?: Fix
           { key: 'items', label: 'Items', align: 'right' },
           { key: 'total', label: 'Total', align: 'right' },
           { key: 'vat', label: 'VAT', align: 'right' },
+          { key: 'outstanding', label: 'Outstanding', align: 'right' },
           { key: 'status', label: 'Status' },
           { key: 'actions', label: 'Actions' },
         ]}
@@ -671,6 +676,15 @@ export default function InvoicesManager({ fixedType = 'ALL' }: { fixedType?: Fix
             </td>
             <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{formatTaka(row.total)}</td>
             <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{formatTaka(row.vat)}</td>
+            <td className="px-4 py-2.5 text-right tabular-nums">
+              {row.status === 'cancelled' || row.status === 'draft' ? (
+                <span className="text-gray-300">—</span>
+              ) : row.total - row.paid > 0 ? (
+                <span className="text-amber-700">{formatTaka(row.total - row.paid)}</span>
+              ) : (
+                <span className="text-emerald-700">Settled</span>
+              )}
+            </td>
             <td className="px-4 py-2.5">
               <span
                 className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ring-inset ${STATUS_BADGE[row.status]}`}
@@ -701,6 +715,17 @@ export default function InvoicesManager({ fixedType = 'ALL' }: { fixedType?: Fix
                     className="text-xs font-semibold text-blue-600 hover:underline"
                   >
                     Post
+                  </button>
+                )}
+                {(row.status === 'sent' || row.status === 'partially_paid') && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSettling({ id: row.id, number: row.number, type: row.type, total: row.total, paid: row.paid, status: row.status })
+                    }
+                    className="text-xs font-semibold text-emerald-600 hover:underline"
+                  >
+                    {row.type === 'sale' ? 'Receive' : 'Pay'}
                   </button>
                 )}
                 <a
@@ -787,6 +812,15 @@ export default function InvoicesManager({ fixedType = 'ALL' }: { fixedType?: Fix
             </p>
           </div>
         </Modal>
+      )}
+
+      {settling && (
+        <InvoiceSettlement
+          invoice={settling}
+          accounts={accounts}
+          onClose={() => setSettling(null)}
+          onChanged={load}
+        />
       )}
     </main>
   )

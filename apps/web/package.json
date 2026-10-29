@@ -10,6 +10,7 @@
     "db:seed": "tsx src/lib/db/scripts/seed.ts",
     "db:chart": "tsx src/lib/db/scripts/backfill-chart.ts",
     "db:stock": "tsx src/lib/db/scripts/backfill-stock.ts",
+    "db:product-codes": "tsx src/lib/db/scripts/backfill-product-codes.ts",
     "db:multi-tenant": "tsx src/lib/db/scripts/seed-multi-tenant.ts",
     "db:sync-names": "tsx src/lib/db/scripts/sync-company-names.ts",
     "db:rls": "tsx src/lib/db/scripts/apply-rls.ts",

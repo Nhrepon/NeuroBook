@@ -1,18 +1,19 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
-import {
-  AlertTriangle, ArrowLeft, Check, CheckCircle2, Loader2, Plus, Save, Scale, Send, Sparkles, Trash2, Wand2,
-} from 'lucide-react'
-import {
-  can, formatTaka, toMinor, voucherTypePermission,
-  type AccountType, type Role, type VoucherType,
-} from '@neurobook/shared'
 import { VOUCHER_CATALOG, voucherTypeLabel } from '@/lib/voucher-ui'
 import AccountPicker, { type LedgerAccount } from '@/ui/AccountPicker'
 import { FormAlert } from '@/ui/Field'
 import PageHeader from '@/ui/PageHeader'
+import {
+  can, formatTaka, toMinor, voucherTypePermission,
+  type AccountType, type Role, type VoucherType,
+} from '@neurobook/shared'
+import {
+  AlertTriangle, ArrowLeft, Check, CheckCircle2, Copy,
+  Loader2, Plus, Save, Scale, Send, Sparkles, Trash2, Wand2
+} from 'lucide-react'
+import Link from 'next/link'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 interface Line {
   key: string
@@ -112,6 +113,21 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
     return { key: `l${Date.now()}-${lineSeq.current}`, accountId: '', reference: '', debit: '', credit: '' }
   }
 
+  // Tally-style keyboard flow: picking a ledger drops the cursor on its amount,
+  // and Enter walks to the next line instead of jumping out of the table.
+  const debitRefs = useRef(new Map<string, HTMLInputElement>())
+  const creditRefs = useRef(new Map<string, HTMLInputElement>())
+  const accountDomId = (index: number) => `line-${index}-account`
+  function focusAccount(index: number) {
+    requestAnimationFrame(() => document.getElementById(accountDomId(index))?.focus())
+  }
+  function focusAmount(key: string, side: 'debit' | 'credit') {
+    requestAnimationFrame(() => (side === 'debit' ? debitRefs : creditRefs).current.get(key)?.focus())
+  }
+  function focusDebit(key: string) {
+    focusAmount(key, 'debit')
+  }
+
   const allowedTypes = useMemo(
     () => VOUCHER_CATALOG.filter((v) => (role ? can(role, voucherTypePermission(v.type)) : true)),
     [role],
@@ -170,6 +186,16 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
       })
       .catch(() => setError('Could not load this voucher.'))
   }, [editMode, voucherId])
+
+  // Arriving from a specific ledger page (Sales, Receipts, ...) starts the entry
+  // with that type's common ledgers already in place.
+  const autoPrefilled = useRef(false)
+  useEffect(() => {
+    if (editMode || autoPrefilled.current || !initialType || accounts.length === 0) return
+    autoPrefilled.current = true
+    if (isBlank()) prefill(initialType)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accounts.length, initialType, editMode])
 
   const totals = useMemo(() => {
     return lines.reduce(
@@ -248,24 +274,43 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
     setLines([newLine(), newLine()])
   }
 
-  function balanceLastLine() {
-    if (difference === 0) return
-    setLines((rows) => {
-      const next = [...rows]
-      const index = next.length - 1
-      const isDebitHeavy = difference > 0
-      const amount = Math.abs(difference) / 100
-      next[index] = {
-        ...next[index],
-        debit: isDebitHeavy ? next[index].debit : String(amount),
-        credit: isDebitHeavy ? String(amount) : next[index].credit,
-      }
-      return next
-    })
+  function duplicateLine(key: string) {
+    const index = lines.findIndex((l) => l.key === key)
+    if (index < 0) return
+    const copy = { ...lines[index], key: newLine().key }
+    setLines((rows) => [...rows.slice(0, index + 1), copy, ...rows.slice(index + 1)])
+    setFocusKey(copy.key)
   }
 
-  function prefill() {
-    const template = TEMPLATES[type]
+  function balanceEntry() {
+    if (difference === 0) return
+    const side: 'debit' | 'credit' = difference > 0 ? 'credit' : 'debit'
+    const amount = (Math.abs(difference) / 100).toFixed(2)
+
+    // Prefer an empty line; only add a new one when the entry has none left.
+    const target = [...lines].reverse().find((l) => minor(l.debit) === 0 && minor(l.credit) === 0)
+    if (target) {
+      setLines((rows) =>
+        rows.map((l) =>
+          l.key === target.key
+            ? { ...l, debit: side === 'debit' ? amount : '', credit: side === 'credit' ? amount : '' }
+            : l,
+        ),
+      )
+      focusAmount(target.key, side)
+      return
+    }
+
+    const line = newLine()
+    setLines((rows) => [
+      ...rows,
+      { ...line, debit: side === 'debit' ? amount : '', credit: side === 'credit' ? amount : '' },
+    ])
+    setFocusKey(line.key)
+  }
+
+  function prefill(target: VoucherType = type) {
+    const template = TEMPLATES[target]
     if (!template) {
       setNotice('No starter layout for this voucher type — pick the ledgers yourself.')
       return
@@ -297,7 +342,31 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
         credit: '',
       })),
     )
+    setFocusKey(null)
     setNotice(`${hits.map((h) => h.account!.name).join(' / ')} — add the amounts.`)
+  }
+
+  function isBlank(rows: Line[] = lines) {
+    return rows.every((l) => !l.accountId && minor(l.debit) === 0 && minor(l.credit) === 0)
+  }
+
+  function changeType(next: VoucherType) {
+    setType(next)
+    setNotice(null)
+    setFocusKey(null)
+    // Only the starter ledgers for the new type — never overwrite a live entry.
+    if (isBlank()) prefill(next)
+  }
+
+  function setToday() {
+    setDate(new Date().toISOString().slice(0, 10))
+  }
+
+  /** Formats a typed amount to two decimals when the field loses focus. */
+  function tidyAmount(key: string, side: 'debit' | 'credit', value: string) {
+    const n = parseTaka(value)
+    if (n <= 0) return
+    updateLine(key, { [side]: n.toFixed(2) } as Partial<Line>)
   }
 
   async function save(action: 'draft' | 'post') {
@@ -473,6 +542,13 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
                 onChange={(e) => setDate(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
               />
+              <button
+                type="button"
+                onClick={setToday}
+                className="mt-1 text-[11px] font-semibold text-blue-600 hover:underline"
+              >
+                Today
+              </button>
             </div>
 
             <div>
@@ -489,10 +565,7 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
                   id="voucher-type"
                   value={type}
                   disabled={allowedTypes.length === 0}
-                  onChange={(e) => {
-                    setType(e.target.value as VoucherType)
-                    setNotice(null)
-                  }}
+                  onChange={(e) => changeType(e.target.value as VoucherType)}
                   className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
                 >
                   {groupedTypes.map(([group, items]) => (
@@ -548,7 +621,7 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={prefill}
+                onClick={() => prefill()}
                 disabled={disabled || !TEMPLATES[type]}
                 title={TEMPLATES[type] ? 'Fill common ledgers for this voucher type' : 'No starter layout for this type'}
                 className="flex items-center gap-1.5 rounded-lg border border-gray-300 px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50 disabled:opacity-50"
@@ -595,7 +668,10 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
                           autoFocus={focusKey === line.key}
                           disabled={disabled}
                           placeholder={index === 0 ? 'e.g. Cash' : 'Select ledger account'}
-                          onChange={(picked) => updateLine(line.key, { accountId: picked?.id ?? '' })}
+                          onChange={(picked) => {
+                            updateLine(line.key, { accountId: picked?.id ?? '' })
+                            if (picked) focusDebit(line.key)
+                          }}
                         />
                         {issue ? (
                           <p className="mt-1 flex items-center gap-1 pl-1 text-[11px] text-amber-700">
@@ -622,16 +698,23 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
                       </td>
                       <td className="px-2 py-2">
                         <input
+                          ref={(el) => {
+                            if (el) debitRefs.current.set(line.key, el)
+                            else debitRefs.current.delete(line.key)
+                          }}
                           aria-label={`Debit amount for line ${index + 1}`}
                           inputMode="decimal"
                           placeholder="0.00"
                           value={line.debit}
                           disabled={disabled}
+                          onFocus={(e) => e.currentTarget.select()}
                           onChange={(e) => updateLine(line.key, { debit: sanitizeAmount(e.target.value), credit: '' })}
+                          onBlur={(e) => tidyAmount(line.key, 'debit', e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               e.preventDefault()
-                              addLine()
+                              if (index < lines.length - 1) focusAccount(index + 1)
+                              else addLine()
                             }
                           }}
                           className="w-full rounded-lg border border-gray-300 px-2.5 py-2 text-right text-sm tabular-nums outline-none transition placeholder:text-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
@@ -639,31 +722,51 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
                       </td>
                       <td className="px-2 py-2">
                         <input
+                          ref={(el) => {
+                            if (el) creditRefs.current.set(line.key, el)
+                            else creditRefs.current.delete(line.key)
+                          }}
                           aria-label={`Credit amount for line ${index + 1}`}
                           inputMode="decimal"
                           placeholder="0.00"
                           value={line.credit}
                           disabled={disabled}
+                          onFocus={(e) => e.currentTarget.select()}
                           onChange={(e) => updateLine(line.key, { credit: sanitizeAmount(e.target.value), debit: '' })}
+                          onBlur={(e) => tidyAmount(line.key, 'credit', e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               e.preventDefault()
-                              addLine()
+                              if (index < lines.length - 1) focusAccount(index + 1)
+                              else addLine()
                             }
                           }}
                           className="w-full rounded-lg border border-gray-300 px-2.5 py-2 text-right text-sm tabular-nums outline-none transition placeholder:text-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/25"
                         />
                       </td>
                       <td className="px-2 py-2 text-right">
-                        <button
-                          type="button"
-                          onClick={() => removeLine(line.key)}
-                          disabled={lines.length <= 2 || disabled}
-                          aria-label={`Remove line ${index + 1}`}
-                          className="rounded p-1.5 text-gray-400 transition hover:text-red-600 disabled:opacity-30"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                        <div className="flex items-center justify-end gap-0.5">
+                          <button
+                            type="button"
+                            onClick={() => duplicateLine(line.key)}
+                            disabled={disabled}
+                            aria-label={`Duplicate line ${index + 1}`}
+                            title="Duplicate line"
+                            className="rounded p-1.5 text-gray-400 transition hover:text-blue-600 disabled:opacity-30"
+                          >
+                            <Copy size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeLine(line.key)}
+                            disabled={lines.length <= 2 || disabled}
+                            aria-label={`Remove line ${index + 1}`}
+                            title="Remove line"
+                            className="rounded p-1.5 text-gray-400 transition hover:text-red-600 disabled:opacity-30"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -699,11 +802,11 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
               </p>
               <button
                 type="button"
-                onClick={balanceLastLine}
+                onClick={balanceEntry}
                 className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
               >
                 <Wand2 size={13} aria-hidden />
-                Put difference on last line
+                Balance entry
               </button>
             </div>
           )}
@@ -729,7 +832,7 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
           </ul>
         )}
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="sticky bottom-2 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-gray-200 bg-white/95 p-3 shadow-sm backdrop-blur">
           <button
             type="button"
             onClick={() => save('post')}
@@ -757,7 +860,7 @@ export default function VoucherForm({ mode, voucherId, initialType }: VoucherFor
             Clear
           </button>
           <span className="ml-auto hidden text-xs text-gray-400 sm:block">
-            Ctrl+Enter posts · Alt+A adds a line
+            Ctrl+Enter posts · Alt+A adds a line · Enter moves to the next line
           </span>
         </div>
       </form>

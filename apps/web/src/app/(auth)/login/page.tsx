@@ -20,8 +20,10 @@ export default function LoginPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (params.get('deleted')) {
-      setNotice('That company and all of its data were deleted. Sign in with another company to continue.')
+    if (params.get('deleted') === 'account') {
+      setNotice('Your account was deleted from that company. Sign in again with another company, or register a new one.')
+    } else if (params.get('deleted')) {
+      setNotice('That company and all of its data were deleted. Sign in with another company, or register a new one.')
     } else if (params.get('expired')) {
       setNotice('Your session is no longer valid. Sign in again to continue.')
     } else if (params.get('suspended')) {

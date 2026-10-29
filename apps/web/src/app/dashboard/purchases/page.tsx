@@ -1,7 +1,7 @@
 'use client'
 
-import InvoicesManager from '@/ui/InvoicesManager'
+import PurchaseInvoiceList from './PurchaseInvoiceList'
 
 export default function PurchasesPage() {
-  return <InvoicesManager fixedType="purchase" />
+  return <PurchaseInvoiceList />
 }

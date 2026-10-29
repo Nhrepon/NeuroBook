@@ -1,4 +1,4 @@
-import { invoiceLines, invoices, parties, stockMovements, vouchers } from '@/lib/db/schema'
+import { invoiceLines, invoices, parties, payments, stockMovements, vouchers } from '@/lib/db/schema'
 import { requireScope } from '@/controllers/scope'
 import { withTenant } from '@/lib/db/tenant'
 import { postVoucher } from '@/lib/db/repo/post'
@@ -62,7 +62,24 @@ export async function getAllInvoices() {
       .groupBy(invoiceLines.invoiceId)
 
     const byInvoice = new Map(counts.map((c) => [c.invoiceId, Number(c.lineCount)]))
-    return rows.map((r) => ({ ...r, lineCount: byInvoice.get(r.id) ?? 0 }))
+
+    // How much of each invoice has been settled, so the list can show what is
+    // still outstanding without a second request.
+    const settled = await tx
+      .select({
+        invoiceId: payments.invoiceId,
+        paid: sql<number>`coalesce(sum(${payments.amount}),0)::bigint`,
+      })
+      .from(payments)
+      .where(eq(payments.tenantId, scope.tenantId))
+      .groupBy(payments.invoiceId)
+    const paidBy = new Map(settled.filter((s) => s.invoiceId).map((s) => [s.invoiceId as string, Number(s.paid)]))
+
+    return rows.map((r) => ({
+      ...r,
+      lineCount: byInvoice.get(r.id) ?? 0,
+      paid: paidBy.get(r.id) ?? 0,
+    }))
   })
 }
 

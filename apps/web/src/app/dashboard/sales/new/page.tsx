@@ -1,7 +1,7 @@
 'use client'
 
-import SalesInvoiceForm from '@/ui/SalesInvoiceForm'
+import InvoiceForm from '@/app/dashboard/invoices/InvoiceForm'
 
 export default function NewSalesInvoicePage() {
-  return <SalesInvoiceForm />
+  return <InvoiceForm type="sale" />
 }

@@ -58,6 +58,10 @@ export function toErrorResponse(error: unknown): Response {
     if (status !== undefined) {
       return Response.json({ error: { code, message: error.message } }, { status })
     }
+    // In development, surface unexpected errors instead of an empty 500.
+    if (process.env.NODE_ENV !== 'production') {
+      return Response.json({ error: { code: 'INTERNAL', message: error.message } }, { status: 500 })
+    }
   }
   throw error
 }

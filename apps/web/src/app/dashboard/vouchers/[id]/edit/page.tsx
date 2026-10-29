@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams } from 'next/navigation'
-import VoucherForm from '@/ui/VoucherForm'
+import VoucherForm from '../../VoucherForm'
 
 export default function EditVoucherPage() {
   const id = useParams()?.id as string

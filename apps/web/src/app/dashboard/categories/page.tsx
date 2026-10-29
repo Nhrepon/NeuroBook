@@ -1,55 +1,35 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Loader2, Plus, Tags, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Plus, Tags } from 'lucide-react'
 import { can, type Role } from '@neurobook/shared'
-import Field, { FormAlert } from '@/ui/Field'
+import { FormAlert } from '@/ui/Field'
 import PageHeader from '@/ui/PageHeader'
-import Card from '@/ui/Card'
 import RoleNotice from '@/ui/RoleNotice'
-import SearchInput from '@/ui/SearchInput'
-import DataTable from '@/ui/DataTable'
+import Modal from '@/ui/Modal'
+import Button from '@/ui/Button'
+import CategoryForm from './CategoryForm'
+import CategoryList, { type CategoryRow } from './CategoryList'
 
-interface Category {
-  id: string
-  name: string
-}
-
-interface Product {
-  id: string
-  category: string | null
-}
+type FormState = { mode: 'create' } | { mode: 'edit'; category: CategoryRow }
 
 export default function CategoriesPage() {
-  const [categories, setCategories] = useState<Category[]>([])
-  const [products, setProducts] = useState<Product[]>([])
+  const [categories, setCategories] = useState<CategoryRow[]>([])
   const [role, setRole] = useState<Role | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
 
-  const [showForm, setShowForm] = useState(false)
-  const [newCatName, setNewCatName] = useState('')
-  const [saving, setSaving] = useState(false)
-
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editingName, setEditingName] = useState('')
-
-  const [query, setQuery] = useState('')
+  const [form, setForm] = useState<FormState | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   async function load() {
     setLoading(true)
     try {
-      const [cRes, pRes] = await Promise.all([
-        fetch('/api/v1/categories', { cache: 'no-store' }),
-        fetch('/api/v1/products', { cache: 'no-store' }),
-      ])
-      if (!cRes.ok) throw new Error('Could not load categories')
-      const cJson = await cRes.json()
-      setCategories(cJson.data ?? [])
-      if (pRes.ok) {
-        const pJson = await pRes.json()
-        setProducts(pJson.data ?? [])
-      }
+      const res = await fetch('/api/v1/categories', { cache: 'no-store' })
+      if (!res.ok) throw new Error('Could not load categories')
+      const json = await res.json()
+      setCategories(json.data ?? [])
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load categories')
@@ -68,194 +48,108 @@ export default function CategoriesPage() {
 
   const canWrite = role ? can(role, 'product:write') : true
 
-  const counts = useMemo(() => {
-    const m = new Map<string, number>()
-    products.forEach((p) => {
-      if (p.category) m.set(p.category, (m.get(p.category) ?? 0) + 1)
-    })
-    return m
-  }, [products])
-
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return categories.filter((c) => !q || c.name.toLowerCase().includes(q)).sort((a, b) => a.name.localeCompare(b.name))
-  }, [categories, query])
-
-  async function create(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newCatName.trim() || !canWrite) return
-    setSaving(true)
+  function openCreate() {
+    if (!canWrite) return
     setError(null)
-    try {
-      const res = await fetch('/api/v1/categories', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newCatName.trim() }),
-      })
-      const body = await res.json().catch(() => null)
-      if (!res.ok) {
-        setError(body?.error?.message ?? 'Could not save category.')
-        return
-      }
-      setNewCatName('')
-      setShowForm(false)
-      await load()
-    } catch {
-      setError('Network error. Please try again.')
-    } finally {
-      setSaving(false)
-    }
+    setNotice(null)
+    setForm({ mode: 'create' })
   }
 
-  async function saveEdit(id: string) {
-    if (!editingName.trim()) return
-    setSaving(true)
+  function openEdit(category: CategoryRow) {
     setError(null)
-    try {
-      const res = await fetch('/api/v1/categories', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, name: editingName.trim() }),
-      })
-      const body = await res.json().catch(() => null)
-      if (!res.ok) {
-        setError(body?.error?.message ?? 'Could not rename category.')
-        return
-      }
-      setEditingId(null)
-      setEditingName('')
-      await load()
-    } catch {
-      setError('Network error. Please try again.')
-    } finally {
-      setSaving(false)
-    }
+    setNotice(null)
+    setForm({ mode: 'edit', category })
   }
 
-  async function remove(id: string, name: string) {
-    const count = counts.get(name) ?? 0
-    const msg = count > 0
-      ? `Delete category "${name}"? ${count} product${count === 1 ? '' : 's'} will lose this category.`
-      : `Delete category "${name}"?`
+  async function remove(category: CategoryRow) {
+    const count = category.productCount
+    const children = categories.filter((c) => c.parentId === category.id).length
+    const effects: string[] = []
+    if (count > 0) effects.push(`${count} product${count === 1 ? '' : 's'} will keep their history but lose this category`)
+    if (children > 0) effects.push(`${children} sub-categor${children === 1 ? 'y' : 'ies'} will move to the top level`)
+    const msg = `Delete "${category.name}"?${effects.length ? ` ${effects.join(' and ')}.` : ''}`
     if (!window.confirm(msg)) return
-    setSaving(true)
+
+    setDeletingId(category.id)
     setError(null)
+    setNotice(null)
     try {
-      const res = await fetch(`/api/v1/categories?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      const res = await fetch(`/api/v1/categories?id=${encodeURIComponent(category.id)}`, { method: 'DELETE' })
       const body = await res.json().catch(() => null)
       if (!res.ok) {
-        setError(body?.error?.message ?? 'Could not delete category.')
+        setError(body?.error?.message ?? 'Could not delete the category.')
         return
       }
+      const moved = body?.data?.products ?? count
+      setNotice(
+        moved > 0
+          ? `Deleted "${category.name}". ${moved} product${moved === 1 ? '' : 's'} are now uncategorised.`
+          : `Deleted "${category.name}".`,
+      )
       await load()
     } catch {
       setError('Network error. Please try again.')
     } finally {
-      setSaving(false)
+      setDeletingId(null)
     }
   }
+
+  const editingCategory = form?.mode === 'edit' ? form.category : null
 
   return (
     <main className="mx-auto max-w-7xl">
       <PageHeader
         icon={Tags}
         title="Product categories"
-        description="Groups used to organise products and filter the product list."
+        description="Groups used to organise products and filter the product list. A category can be renamed or removed without touching a product's history."
       >
-        <button
-          type="button"
-          onClick={() => canWrite && setShowForm((v) => !v)}
-          aria-disabled={!canWrite}
-          className={`flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-            canWrite ? 'bg-blue-600 text-white hover:bg-blue-700' : 'cursor-not-allowed bg-gray-100 text-gray-400 shadow-none'
-          }`}
-        >
-          {showForm ? <X size={15} aria-hidden /> : <Plus size={15} aria-hidden />}
-          {showForm ? 'Cancel' : 'New category'}
-        </button>
+        <Button type="button" onClick={openCreate} disabled={!canWrite}>
+          <Plus size={15} aria-hidden />
+          New category
+        </Button>
       </PageHeader>
 
       {role && !canWrite && <RoleNotice>Your role can view categories but not change them.</RoleNotice>}
 
-      {showForm && canWrite && (
-        <Card className="mb-5 p-4 sm:p-5">
-          <form onSubmit={create}>
-            <h2 className="text-sm font-semibold text-gray-900">New category</h2>
-            <div className="mt-4 flex items-end gap-2">
-              <div className="flex-1">
-                <Field label="Name" required placeholder="e.g. Stationery" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} />
-              </div>
-              <button type="submit" disabled={!newCatName.trim() || saving} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50">
-                {saving && <Loader2 size={15} className="animate-spin" aria-hidden />}
-                {saving ? 'Saving...' : 'Save category'}
-              </button>
-            </div>
-          </form>
-        </Card>
+      {notice && (
+        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-800">
+          {notice}
+        </p>
       )}
-
       {error && <FormAlert message={error} />}
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <SearchInput value={query} onChange={setQuery} placeholder="Search categories" />
-      </div>
-
-      <DataTable
-        columns={[
-          { key: 'name', label: 'Name' },
-          { key: 'products', label: 'Products', align: 'right' },
-          { key: 'actions', label: 'Actions', align: 'right' },
-        ]}
+      <CategoryList
+        categories={categories}
         loading={loading}
-        loadingLabel="Loading categories..."
-        isEmpty={visible.length === 0}
-        empty={categories.length === 0 ? 'No categories yet. Add one to group your products.' : 'No categories match this search.'}
-      >
-        {visible.map((c) => (
-          <tr key={c.id} className="hover:bg-gray-50/70">
-            <td className="px-4 py-2.5 font-medium text-gray-900">
-              {editingId === c.id ? (
-                <input
-                  autoFocus
-                  value={editingName}
-                  onChange={(e) => setEditingName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault()
-                      void saveEdit(c.id)
-                    }
-                    if (e.key === 'Escape') {
-                      setEditingId(null)
-                      setEditingName('')
-                    }
-                  }}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
-                />
-              ) : (
-                c.name
-              )}
-            </td>
-            <td className="px-4 py-2.5 text-right tabular-nums text-gray-700">{counts.get(c.name) ?? 0}</td>
-            <td className="px-4 py-2.5 text-right">
-              {canWrite && (
-                <div className="flex items-center justify-end gap-3">
-                  {editingId === c.id ? (
-                    <>
-                      <button type="button" onClick={() => saveEdit(c.id)} disabled={saving} className="text-xs font-semibold text-blue-600 hover:underline disabled:opacity-50">Save</button>
-                      <button type="button" onClick={() => { setEditingId(null); setEditingName('') }} className="text-xs font-semibold text-gray-500 hover:underline">Cancel</button>
-                    </>
-                  ) : (
-                    <>
-                      <button type="button" onClick={() => { setEditingId(c.id); setEditingName(c.name) }} className="text-xs font-semibold text-blue-600 hover:underline">Rename</button>
-                      <button type="button" onClick={() => remove(c.id, c.name)} className="text-xs font-semibold text-red-600 hover:underline">Delete</button>
-                    </>
-                  )}
-                </div>
-              )}
-            </td>
-          </tr>
-        ))}
-      </DataTable>
+        canWrite={canWrite}
+        deletingId={deletingId}
+        onEdit={openEdit}
+        onDelete={remove}
+      />
+
+      {form && (
+        <Modal
+          title={form.mode === 'create' ? 'New category' : `Rename "${form.category.name}"`}
+          subtitle={
+            form.mode === 'create'
+              ? 'Group related products under one name.'
+              : 'Renaming keeps every product in this category.'
+          }
+          size="xl"
+          onClose={() => setForm(null)}
+        >
+          <CategoryForm
+            category={editingCategory}
+            categories={categories}
+            onCancel={() => setForm(null)}
+            onSaved={(name, created) => {
+              setForm(null)
+              setNotice(created ? `Category "${name}" added.` : `Renamed to "${name}".`)
+              void load()
+            }}
+          />
+        </Modal>
+      )}
     </main>
   )
 }

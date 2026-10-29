@@ -1,8 +1,9 @@
 import { db } from '@/lib/db/client'
 import { companySettings, tenants, users } from '@/lib/db/schema'
 import { ensureDefaultChart } from '@/lib/db/chart'
+import { ensureDefaultTaxRates } from '@/lib/db/tax-seed'
 import { requirePermission } from '@/controllers/scope'
-import { badRequest, notFound, conflict } from '@/controllers/errors'
+import { badRequest, notFound } from '@/controllers/errors'
 import { uniqueSlug } from '@/lib/slug'
 import { sessionProfile } from '@/lib/db/tenant-membership'
 import { writeAudit } from '@/lib/db/audit'
@@ -95,6 +96,7 @@ export async function createTenant(input: unknown) {
 
     await tx.insert(companySettings).values({ tenantId: tenant.id, companyName: name })
     await ensureDefaultChart(tenant.id, tx as any)
+    await ensureDefaultTaxRates(tenant.id, tx as any)
 
     let membership: { id: string; email: string; role: string } | null = null
     if (parsed.data.join) {
@@ -170,9 +172,9 @@ export async function updateTenantPassword(input: unknown) {
 }
 
 /**
- * Deletes a company and everything scoped to it (ON DELETE CASCADE). Refuses when
- * the admin's email belongs only to this company, because their sign-in would
- * disappear with it. `sessionEnded` tells the route whether to clear the cookie.
+ * Deletes a company and everything scoped to it (ON DELETE CASCADE). Works even
+ * when it is the admin's only company — the session ends and they can register
+ * again or be re-invited. `sessionEnded` tells the route whether to clear the cookie.
  */
 export async function deleteTenant(id: string) {
   const scope = await requirePermission('tenant:manage')
@@ -195,34 +197,31 @@ export async function deleteTenant(id: string) {
 
   if (!myTenants.includes(target.id)) throw notFound('company not found')
 
-  if (myTenants.length <= 1) {
-    throw conflict(
-      `${target.name} is the only company your email belongs to — deleting it would leave you unable to sign in.`,
-    )
-  }
-
   const [memberCount] = await db.select({ members: count() }).from(users).where(eq(users.tenantId, id))
   const members = Number(memberCount?.members ?? 0)
   const sessionEnded = id === scope.tenantId
-  // Keep the trail where the admin can still read it, and point the entry at the
-  // admin's user row *there*: the row the session is using is deleted along with
-  // the company, and an audit row may not reference a user that no longer exists.
-  const auditTenantId = myTenants.find((t) => t !== id) ?? scope.tenantId
-  const auditUserId = mine.find((m) => m.tenantId === auditTenantId)?.id ?? null
+
+  // Keep the trail where the admin can still read it. When this is their only
+  // company there is no tenant left to record it against, so the entry is skipped;
+  // the row must never point at the company that is being erased.
+  const otherTenantId = myTenants.find((t) => t !== id)
+  const auditUserId = otherTenantId ? (mine.find((m) => m.tenantId === otherTenantId)?.id ?? null) : null
 
   await db.transaction(async (tx) => {
     await tx.delete(tenants).where(eq(tenants.id, id))
-    await writeAudit(
-      {
-        tenantId: auditTenantId,
-        userId: auditUserId,
-        action: 'tenant.delete',
-        resourceType: 'tenant',
-        resourceId: id,
-        before: { id, name: target.name, slug: target.slug, members, fromTenantId: scope.tenantId },
-      },
-      tx as any,
-    )
+    if (otherTenantId) {
+      await writeAudit(
+        {
+          tenantId: otherTenantId,
+          userId: auditUserId,
+          action: 'tenant.delete',
+          resourceType: 'tenant',
+          resourceId: id,
+          before: { id, name: target.name, slug: target.slug, members, fromTenantId: scope.tenantId },
+        },
+        tx as any,
+      )
+    }
   })
 
   return { ...target, members, sessionEnded }

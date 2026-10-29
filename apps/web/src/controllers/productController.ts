@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import { categories, invoiceLines, productSkus, products, stockMovements } from '@/lib/db/schema'
 import { withTenant } from '@/lib/db/tenant'
@@ -45,6 +45,31 @@ function defaultSkuBase(name: string): string {
   return base ? `SKU-${base}` : 'SKU'
 }
 
+const PRODUCT_CODE_PATTERN = /^P-(\d+)$/i
+
+/** Highest existing `P-0001`-style number, so the next auto code never repeats. */
+function nextProductCodeNumber(codes: (string | null)[]): number {
+  let max = 0
+  for (const code of codes) {
+    if (!code) continue
+    const match = PRODUCT_CODE_PATTERN.exec(code)
+    if (match) max = Math.max(max, Number(match[1]))
+  }
+  return max + 1
+}
+
+function formatProductCode(n: number): string {
+  return `P-${String(n).padStart(4, '0')}`
+}
+
+/** First free `P-xxxx` code, skipping custom codes that already use the format. */
+function allocateProductCode(existing: (string | null)[], start: number): { code: string; next: number } {
+  const taken = new Set(existing.filter(Boolean).map((c) => c!.toLowerCase()))
+  let cursor = start
+  while (taken.has(formatProductCode(cursor).toLowerCase())) cursor += 1
+  return { code: formatProductCode(cursor), next: cursor + 1 }
+}
+
 /** Appends `-2`, `-3`, ... until the SKU is free within the company. */
 function uniqueSku(base: string, taken: Set<string>): string {
   if (!taken.has(base)) return base
@@ -73,11 +98,40 @@ export async function getAllProducts() {
       arr.push(s.sku)
       skuMap.set(s.productId, arr)
     })
-    return rows.map((r) => ({
-      ...r,
-      category: r.categoryId ? (catMap.get(r.categoryId) ?? null) : null,
-      skus: skuMap.get(r.id) ?? [],
-    }))
+
+    // On-hand and history: deleting an item that has moved through stock (or been
+    // billed) would erase its trail, so the list needs to know before offering it.
+    const movements = await tx
+      .select({
+        productId: stockMovements.productId,
+        onHand: sql<number>`coalesce(sum(case when ${stockMovements.type} = 'in' then ${stockMovements.quantity} when ${stockMovements.type} = 'out' then -${stockMovements.quantity} when ${stockMovements.type} = 'adjustment' then ${stockMovements.quantity} else 0 end),0)::numeric`,
+        moves: sql<number>`count(*)::int`,
+      })
+      .from(stockMovements)
+      .where(eq(stockMovements.tenantId, scope.tenantId))
+      .groupBy(stockMovements.productId)
+    const stockMap = new Map(
+      movements.map((m) => [m.productId, { onHand: Number(m.onHand), moves: Number(m.moves) }]),
+    )
+
+    const invoiced = await tx
+      .select({ productId: invoiceLines.productId })
+      .from(invoiceLines)
+      .where(eq(invoiceLines.tenantId, scope.tenantId))
+      .groupBy(invoiceLines.productId)
+    const invoicedIds = new Set(invoiced.map((l) => l.productId).filter(Boolean) as string[])
+
+    return rows.map((r) => {
+      const stock = stockMap.get(r.id)
+      return {
+        ...r,
+        category: r.categoryId ? (catMap.get(r.categoryId) ?? null) : null,
+        skus: skuMap.get(r.id) ?? [],
+        onHand: stock?.onHand ?? 0,
+        /** Any previous record — stock movement or invoice line — blocks deletion. */
+        hasHistory: Boolean(stock?.moves || invoicedIds.has(r.id)),
+      }
+    })
   })
 }
 
@@ -104,13 +158,29 @@ export async function createProducts(input: unknown) {
         const [existing] = await tx
           .select({ id: categories.id })
           .from(categories)
-          .where(and(eq(categories.tenantId, scope.tenantId), eq(categories.name, d.category)))
+          .where(
+            and(
+              eq(categories.tenantId, scope.tenantId),
+              sql`lower(${categories.name}) = lower(${d.category.trim().replace(/\s+/g, ' ')})`,
+            ),
+          )
         if (existing) return existing.id
         const [created] = await tx
           .insert(categories)
-          .values({ tenantId: scope.tenantId, name: d.category })
+          .values({ tenantId: scope.tenantId, name: d.category.trim().replace(/\s+/g, ' ') })
+          .onConflictDoNothing()
           .returning({ id: categories.id })
-        return created.id
+        if (created) return created.id
+        const [again] = await tx
+          .select({ id: categories.id })
+          .from(categories)
+          .where(
+            and(
+              eq(categories.tenantId, scope.tenantId),
+              sql`lower(${categories.name}) = lower(${d.category.trim().replace(/\s+/g, ' ')})`,
+            ),
+          )
+        return again.id
       }),
     )
 
@@ -130,17 +200,27 @@ export async function createProducts(input: unknown) {
       requestedSkus.forEach((s) => taken.add(s))
     }
 
-    const requestedCodes = data.map((d: z.infer<typeof ItemSchema>) => d.code).filter(Boolean) as string[]
-    if (requestedCodes.length > 0) {
-      if (new Set(requestedCodes).size !== requestedCodes.length) throw conflict('duplicate item code in this batch')
-      const existingCodes = await tx
-        .select({ code: products.code })
-        .from(products)
-        .where(and(eq(products.tenantId, scope.tenantId), inArray(products.code, requestedCodes)))
-      if (existingCodes.length > 0) {
-        throw conflict(`Item code already exists: ${existingCodes.map((c) => c.code).join(', ')}`)
+    // Product codes are either supplied (custom) or auto-allocated as P-0001.
+    const existingCodeRows = await tx
+      .select({ code: products.code })
+      .from(products)
+      .where(eq(products.tenantId, scope.tenantId))
+    const existingCodes = existingCodeRows.map((r) => r.code)
+    const takenCodes = new Set(existingCodes.filter(Boolean).map((c) => c!.toLowerCase()))
+    let nextCode = nextProductCodeNumber(existingCodes)
+
+    const resolvedCodes: string[] = data.map((d: z.infer<typeof ItemSchema>) => {
+      const custom = d.code ? d.code.trim().toUpperCase() : ''
+      if (custom) {
+        if (takenCodes.has(custom.toLowerCase())) throw conflict(`Item code already exists: ${custom}`)
+        takenCodes.add(custom.toLowerCase())
+        return custom
       }
-    }
+      const allocated = allocateProductCode([...takenCodes], nextCode)
+      nextCode = allocated.next
+      takenCodes.add(allocated.code.toLowerCase())
+      return allocated.code
+    })
 
     const resolvedSkus: string[] = data.map((d: z.infer<typeof ItemSchema>) => {
       if (d.sku) return d.sku
@@ -156,7 +236,7 @@ export async function createProducts(input: unknown) {
           tenantId: scope.tenantId,
           name: d.name,
           nameBn: d.nameBn ?? null,
-          code: d.code ?? null,
+          code: resolvedCodes[i],
           categoryId: categoryIds[i],
           unit: d.unit ?? null,
           price: d.price ?? 0,
@@ -223,34 +303,68 @@ export async function updateProduct(input: unknown) {
       .where(and(eq(products.id, d.id), eq(products.tenantId, scope.tenantId)))
     if (!target) throw notFound('product not found')
 
-    if (d.code && d.code !== target.code) {
-      const [clash] = await tx
-        .select({ id: products.id })
-        .from(products)
-        .where(and(eq(products.tenantId, scope.tenantId), eq(products.code, d.code)))
-      if (clash && clash.id !== target.id) throw conflict('item code already exists')
+    let codeValue: string | undefined
+    if (d.code !== undefined) {
+      const custom = d.code ? d.code.trim().toUpperCase() : ''
+      if (custom) {
+        if (custom !== target.code) {
+          const [clash] = await tx
+            .select({ id: products.id })
+            .from(products)
+            .where(and(eq(products.tenantId, scope.tenantId), sql`upper(${products.code}) = ${custom}`))
+          if (clash && clash.id !== target.id) throw conflict('item code already exists')
+        }
+        codeValue = custom
+      } else {
+        // Clearing the field regenerates an automatic code, so every product keeps one.
+        const codeRows = await tx
+          .select({ code: products.code })
+          .from(products)
+          .where(eq(products.tenantId, scope.tenantId))
+        const others = codeRows.map((r) => r.code).filter((c) => c !== target.code)
+        codeValue = allocateProductCode(others, nextProductCodeNumber(codeRows.map((r) => r.code))).code
+      }
     }
 
     let categoryId: string | null | undefined = d.categoryId
     if (d.category !== undefined) {
+      const categoryName = d.category.trim().replace(/\s+/g, ' ')
       const [existing] = await tx
         .select({ id: categories.id })
         .from(categories)
-        .where(and(eq(categories.tenantId, scope.tenantId), eq(categories.name, d.category)))
+        .where(
+          and(
+            eq(categories.tenantId, scope.tenantId),
+            sql`lower(${categories.name}) = lower(${categoryName})`,
+          ),
+        )
       if (existing) categoryId = existing.id
       else {
         const [created] = await tx
           .insert(categories)
-          .values({ tenantId: scope.tenantId, name: d.category })
+          .values({ tenantId: scope.tenantId, name: categoryName })
+          .onConflictDoNothing()
           .returning({ id: categories.id })
-        categoryId = created.id
+        if (created) categoryId = created.id
+        else {
+          const [again] = await tx
+            .select({ id: categories.id })
+            .from(categories)
+            .where(
+              and(
+                eq(categories.tenantId, scope.tenantId),
+                sql`lower(${categories.name}) = lower(${categoryName})`,
+              ),
+            )
+          categoryId = again.id
+        }
       }
     }
 
     const patch: Record<string, unknown> = {}
     if (d.name !== undefined) patch.name = d.name
     if (d.nameBn !== undefined) patch.nameBn = d.nameBn
-    if (d.code !== undefined) patch.code = d.code
+    if (d.code !== undefined) patch.code = codeValue
     if (categoryId !== undefined) patch.categoryId = categoryId
     if (d.unit !== undefined) patch.unit = d.unit
     if (d.price !== undefined) patch.price = d.price

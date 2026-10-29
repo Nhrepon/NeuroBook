@@ -1,120 +1,213 @@
 # NeuroBook
 
-Multi-platform accounting platform (Tally Prime alternative) for Bangladesh — Next.js 16 (web) + React Native via Expo (mobile) from a monorepo.
+Multi-company accounting for Bangladesh — a Tally Prime alternative built as a
+Next.js 16 web app plus an Expo mobile app, sharing one TypeScript ledger engine.
 
-See [Architecture.md](Architecture.md) for the full architecture.
+See [Architecture.md](Architecture.md) for the design and [MIGRATION.md](MIGRATION.md)
+for the monorepo history.
 
 ## Workspaces
 
-- `apps/web` — Next.js 16 (App Router, Server Actions, REST `/api/v1/*`)
-- `apps/mobile` — Expo (React Native, New Architecture, Expo Router)
-- `packages/shared` — pure-JS ledger engine, Zod schemas, money, auth primitives, BD formatters
+| Path | What it is |
+| --- | --- |
+| `apps/web` | Next.js 16 App Router, REST `/api/v1/*`, PostgreSQL + Drizzle |
+| `apps/mobile` | Expo / React Native client |
+| `packages/shared` | Ledger engine, money, Zod schemas, roles/permissions, BD formatters |
+
+## What it does
+
+- **Vouchers** — double-entry drafts that post with gapless `TYPE/FY 2026-27/000001`
+  numbering, then lock. Posted vouchers are reversed, never edited. Keyboard-driven
+  entry with starter ledgers per voucher type.
+- **Sales & purchase invoices** — itemised lines, VAT, Mushak 6.2 PDF, due dates and
+  posting to a voucher. Posted bills can be settled (partially or fully paid) and the
+  invoice status follows the money.
+- **Receipts & payments** — dedicated money-in / money-out forms. Choose cash/bank/mobile,
+  an optional supplier/customer, or a specific unpaid bill to settle it in one step.
+- **Products** — automatic (`P-0001`) or custom item codes, SKUs/barcodes, sale and cost
+  price with margin, reorder level, active/inactive. Products with any stock or invoice
+  history cannot be deleted; deactivate them instead.
+- **Product categories** — optional hierarchy (`Pacemaker → Single chamber`), code,
+  description and active flag. Names are unique per company, ignoring case.
+- **Stock** — a single movement ledger (`in`, `out`, `transfer`, `adjustment`) drives
+  on-hand quantities, valuation, low-stock flags and per-item history.
+- **Bank** — bank accounts, transactions and a dashboard balance.
+- **Tax rates** — VAT/AIT/VDS/customs definitions live in Settings and are seeded per
+  company; invoices keep the rate they were raised with.
+- **Reports & dashboard** — trial balance, profit & loss, balance sheet, receivables/
+  payables, cash position and recent activity.
+- **Audit trail** — append-only, with actor, role snapshot, IP, device and endpoint.
 
 ## Quick start
 
-```bash
-# 1. Local infra
-docker compose up -d
+Requires Node 20+, npm 10+, and Docker (for PostgreSQL).
 
-# 2. Install
+```bash
+# 1. Infrastructure (Postgres 16 on :5432)
+docker compose up -d postgres
+
+# 2. Install workspaces
 npm install
 
-# 3. Env
-cp .env.example .env
+# 3. Environment for the web app
+cp .env.example apps/web/.env      # Windows: Copy-Item .env.example apps/web/.env
 
-# 4. Database: push schema, enable RLS, seed demo data
-npm run db:setup --workspace=@neurobook/web
+# 4. Fresh database: push schema, create the app role + RLS, seed demo data
+npm run db:setup
 
 # 5. Develop
-npm run dev          # web (and mobile if configured)
+npm run dev
 ```
 
-## Roles
+Open <http://localhost:3000>.
+
+Demo company: **`demo`** · **admin@demo.com** · **password123**
+Other seeded roles use the same password (`manager@demo.com`, `accountant@demo.com`,
+`sales@demo.com`, `purchaser@demo.com`, `cashier@demo.com`, `store@demo.com`,
+`auditor@demo.com`, `viewer@demo.com`).
+
+> After `npm run db:multi-tenant`, `admin@demo.com` also belongs to `demo-two`, so
+> sign-in needs the company code (`demo` or `demo-two`).
+
+## Environment
+
+Next.js loads `apps/web/.env` automatically. The `db:*` scripts read the **process
+environment** (they do not load that file); their built-in defaults match
+`docker-compose.yml`, so local use needs no environment file at all. If you point at a
+different database, export the variables in your shell before running a script.
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Owner connection: migrations, seeding, auth lookup |
+| `APP_DATABASE_URL` | Restricted runtime role; **RLS is enforced for this role** |
+| `APP_DB_ROLE` / `APP_DB_PASSWORD` | Optional overrides used by `db:rls` |
+| `JWT_SECRET` | 32+ character signing secret (dev default only) |
+| `EXPO_PUBLIC_API_URL` | Mobile app's API base URL |
+
+`db:rls` creates the app role and its grants. Every tenant table has an
+`app.tenant_id` policy, set per transaction by `withTenant()`.
+
+## Database scripts
+
+| Script | What it does |
+| --- | --- |
+| `npm run db:setup` | `drizzle-kit push --force` → `db:rls` → `db:seed` (fresh DB) |
+| `npm run db:rls` | Create the app role, enable RLS, install the tenant-code trigger |
+| `npm run db:seed` | Demo company, users, chart of accounts and default tax rates |
+| `npm run db:chart` | Backfill missing default ledgers **and** tax rates |
+| `npm run db:stock` | Backfill stock movements from already-posted invoices |
+| `npm run db:product-codes` | Assign `P-0001` codes to products that have none |
+| `npm run db:multi-tenant` | Add `demo-two` for multi-company testing (`-- --remove` to undo) |
+| `npm run db:sync-names` | Repair `tenants.name` from `company_settings.company_name` |
+| `npm run db:studio` | Open Drizzle Studio |
+
+### Upgrading an existing database
+
+`drizzle-kit push` cannot add `tenants.code` (NOT NULL, no default) to a table that
+already has rows, and it does not rewrite existing `CHECK` constraints. On an older
+database: backfill `upper(slug)` into `tenants.code`, push, then run `db:rls`,
+`db:chart`, `db:stock` and `db:product-codes`. Fresh installs need only `db:setup`.
+
+## Companies, users and security
+
+- **One row per user per company.** The same email can be a member of several
+  companies with a different role in each. There is no global user record.
+- **One company password per company** (`tenants.password_hash`), shared by everyone
+  who switches in. It is what the dashboard switcher asks for, not the person's login
+  password. Rotating it never invalidates existing sessions.
+- **Company code** (`tenants.code`) is derived from the slug in uppercase, is globally
+  unique, and is **immutable** — a database trigger rejects any change. Sign-in accepts
+  it case-insensitively. The slug remains the URL/company key.
+- **Company status** is `active`, `suspended` or `archived`. Only active companies can
+  be entered; suspending cuts live sessions on their next request.
+- **Switching** (`POST /api/v1/auth/switch`) requires the target company's password and
+  an active membership row; ADMIN/MANAGER only.
+- **Self-service account deletion** at `/dashboard/account` (`DELETE /api/v1/auth/account`)
+  removes only the current company membership and ends the session. The last active
+  admin of a company cannot delete themselves.
+- **Company deletion** (`DELETE /api/v1/tenants?id=`) cascades every tenant-scoped table.
+  It works even for the admin's only company; the session ends and the browser returns
+  to `/login?deleted=1`. The audit entry is written under another company the admin
+  belongs to, when one exists.
+- **Session revocation.** Tokens carry the user's `token_version`; the proxy re-checks
+  the user on every request. Role changes, deactivation, password resets and moves bump
+  the version and kill live tokens at once.
+- **Audit log** is append-only: the app role has `INSERT`/`SELECT` but no `UPDATE`/
+  `DELETE`. Secrets and password hashes are redacted before storage.
+
+### Roles
 
 | Role | Scope |
 | --- | --- |
-| `ADMIN` | Everything, including users, settings, and period closing |
-| `MANAGER` | Everything except user management |
+| `ADMIN` | Everything, including users, companies and period closing |
+| `MANAGER` | Everything except user and company administration |
 | `ACCOUNTANT` | Vouchers, invoices, masters, bank, tax, audit |
 | `SALES` | Sales invoices, receipts, customers |
 | `PURCHASER` | Purchases, payments, suppliers, stock |
 | `CASHIER` | Receipts, payments, bank |
 | `STORE_KEEPER` | Products and stock |
-| `AUDITOR` | Read-only plus audit log |
+| `AUDITOR` | Read-only plus the audit log |
 | `VIEWER` | Read-only |
 
-Authorization is defined once in `packages/shared/src/auth.ts` and enforced by `proxy.ts` plus per-route checks. Tenant isolation uses both application scoping and PostgreSQL RLS (`app.tenant_id` set per transaction).
+Authorization is defined once in `packages/shared/src/auth.ts`; the proxy gates API
+mutations and admin pages, and controllers re-check sensitive actions.
 
-A user is one row per tenant, so the same email can belong to several companies. Every company also has exactly **one company password** (`tenants.password_hash`) — one company, one password — which is what the dashboard switcher asks for, not the person's login password. Every user who switches into that company types the same one, so a change applies to all of them at once. `POST /api/v1/auth/switch` moves the session to another company; switching requires the `tenant:switch` permission (ADMIN and MANAGER) and the target company's password. A company with no password yet returns `TENANT_PASSWORD_REQUIRED`.
+## Accounting model
 
-Only ADMIN (`tenant:manage`) may change a company password, and only for a company its email belongs to. A company whose email has no membership row is a 404 to that admin, exactly as if it did not exist — there is no cross-tenant operator access any more.
+- **Money** is stored as integer minor units in `bigint` (taka × 100); quantities are
+  `numeric(18,4)`; accounting dates are `date`, while created/posted stamps are
+  `timestamptz`.
+- **Vouchers** move `draft → posted`; posting assigns the fiscal-year sequence and
+  journal lines, and a posted voucher can only be reversed. Fiscal year runs July–June.
+- **Voucher shape rules** are enforced on posting: a receipt debits an asset, a payment
+  credits an asset, contra/transfer use assets only, sales invoices debit a receivable
+  and credit revenue, purchases debit an expense and credit a payable.
+- **Invoices** derive their totals from lines. Posting creates the journal voucher;
+  settling a bill posts a receipt/payment voucher, links it in `payments`, and updates
+  the invoice (`partially_paid` / `paid`). Deleting a settlement reverses its voucher and
+  recalculates the bill.
+- **Stock** is the `stock_movements` ledger. Posting a purchase adds `in`, a sale adds
+  `out`; manual adjustments carry a sign; transfers net to zero company-wide.
+- **Products** are guarded: an item with stock movements or invoice lines cannot be
+  deleted, so history never loses its product.
 
-- `PATCH /api/v1/tenants` with `{ id, password }` — from the dashboard **Companies** page (`/dashboard/companies`), which lists the companies this admin belongs to, with user counts, whether a password is set, a *Change password* action, a *Switch* action and a *Delete* action. The current password is not required, so a lost one can be replaced.
-- `PATCH /api/v1/settings` with `{ currentPassword, newPassword }` — for the company the session is already in, where the current password **is** required (the first set bootstraps a company that has none).
+## API surface
 
-Both audit `tenant.password_change`. Users already switched in keep the session until their 15-minute token expires.
+All product routes are under `/api/v1` and return `{ data }` or `{ error: { code, message } }`.
+Health probes live outside it: `GET /api/health`, `GET /api/ready`.
 
-`GET /api/v1/auth/tenants` lists what the switcher offers — exactly the companies where the signed-in email has an active membership row. There is no admin shortcut to a company it does not belong to:
-
-- MANAGER and ADMIN get the companies their email belongs to, with the role assigned there.
-- A company is entered by its company password; the visiting session carries the membership's role. `auth.tenant_switch` is audited with `as: "member"`.
-
-**The company name lives on `tenants.name`** and is what the sidebar badge, the switcher, login and `/auth/me` read. Settings writes both `tenants.name` and `company_settings.company_name` (the latter is what invoices and the PDF print), and audits the rename as `tenant.rename`. `npm run db:sync-names` repairs rows written before this rule existed.
-
-Admins manage company users from Users &amp; roles: role, enable/disable, move to another company (`PATCH /api/v1/users` with `tenantId`), and remove.
-
-`POST /api/v1/tenants` (ADMIN) creates a company: name, company code (derived from the name when omitted) and a **required** company password. The creator is added as the company's first **ADMIN** member (`join`, default true), so it can open the company immediately and staff it — the same rule as registration. It seeds the company profile and the default chart of accounts; the dashboard **New company** button opens the same form. A company with no password could never be entered by anyone, which is why one is required here.
-
-`DELETE /api/v1/tenants?id=` (ADMIN) deletes a company **and all of its data** — every tenant-scoped table cascades from `tenants(id)`, so accounts, vouchers, journal lines, invoices, payments, parties, products, stock, users, settings and that company's audit log all go in one statement. Two places expose it, both asking you to type the company code before the button arms: the dashboard **Companies** page, and the **Danger zone** at the bottom of **Settings** (`canManageCompany`) for the company the session is in. It refuses when the company is the only one your email belongs to (you would be locked out), and deleting the company your session is in ends that session — the cookie is cleared and the browser lands on `/login?deleted=1`, which explains what happened. The deletion is audited as `tenant.delete` under a company you still belong to.
-
-`npm run db:multi-tenant` seeds a local fixture for this: `admin@demo.com` ends up in both `demo` and `demo-two` (company password `password123` in each), so its sign-in now needs a company code.
-
-### Audit trail
-
-`GET /api/v1/audit` returns the newest 500 events for the company the session is in, and `proxy.ts` stamps every request with `x-audit-route` plus the resolved user/role so each row can answer *who / what / where* without every route having to pass any of it:
-
-| Field | Meaning |
+| Area | Endpoints |
 | --- | --- |
-| `user_id` + joined email, `actor_role` | Who did it, and the role it held **at the time** (a snapshot — a later role change does not rewrite history). `user_id` is `SET NULL` if the user is later removed, so old rows may name nobody. |
-| `action`, `resource_type`, `resource_id` | What was touched (`voucher.post`, `tenant.delete`, ...). |
-| `before` / `after` | Field-level detail; the console renders it as `role: SALES → MANAGER`. |
-| `ip`, `user_agent`, `route` | Where it came from: client IP (`x-forwarded-for` first hop), the browser / device, and the endpoint that handled it (`POST /api/v1/vouchers`). |
+| Auth | `auth/login`, `auth/register`, `auth/logout`, `auth/me`, `auth/switch`, `auth/tenants`, `auth/account` |
+| Companies | `tenants` (GET/POST/PATCH/DELETE) |
+| Settings | `settings` (GET/POST/PATCH) |
+| Masters | `accounts`, `categories`, `products`, `product-skus`, `parties`, `tax/rates`, `bank/accounts`, `bank/transactions` |
+| Vouchers | `vouchers`, `vouchers/:id`, `vouchers/:id/post`, `vouchers/:id/reverse` |
+| Invoices | `invoices`, `invoices/:id`, `invoices/:id/post`, `invoices/:id/pdf` |
+| Settlements | `payments`, `payments/:id` |
+| Stock | `stock`, `stock/:id` |
+| Other | `periods`, `dashboard`, `reports/:type` (`trial-balance`, `profit-loss`, `balance-sheet`), `users`, `audit` |
 
-The dashboard **Audit log** (`/dashboard/audit`, `audit:read`) shows those columns and expands a row into the full before/after table, the actor's user id, the company, the raw user-agent string, the endpoint and the event id. Rows written before these columns existed simply show `not captured`.
+## Verification
 
-### Session revocation
-
-Every token carries a `ver` claim — the user row's `token_version` at sign-in. `proxy.ts` re-reads that row on every request and rejects the request (`SESSION_REVOKED`, 401 for APIs; `/login?expired=1` for pages) when the user is gone, inactive, no longer belongs to the company the token names, or its `token_version` no longer matches. The role is taken from the row, not the token, so a demotion takes effect at once.
-
-`PATCH /api/v1/users` bumps `token_version` (and therefore kills every live token for that account) when the role changes, the account is activated or deactivated, the password is reset, or the membership is moved to another company. Company-password rotation and logout do **not** bump — sessions keep working until their 15-minute expiry.
-
-## Scripts
-
-| Script | What it does |
-| --- | --- |
-| `npm run dev` | Dev servers via Turborepo |
-| `npm run build` | Build all workspaces |
-| `npm run typecheck` | TypeScript across workspaces |
-| `npm run test` | Tests across workspaces |
-| `npm run db:setup` | Push schema, enable RLS, seed |
-| `npm run db:rls` | Create app role and RLS policies |
-| `npm run db:seed` | Seed demo data |
-| `npm run db:chart` | Backfill the default chart of accounts |
-| `npm run db:multi-tenant` | Give `admin@demo.com` a second company (`demo-two`) for multi-tenant testing; add `-- --remove` to undo |
-| `npm run db:sync-names` | Repair `tenants.name` from `company_settings.company_name` (add `-- --report` to preview) |
-| `npm run db:studio` | Open Drizzle Studio on https://local.drizzle.studio |
+```bash
+npm run typecheck   # TypeScript across all workspaces
+npm run test        # workspace tests
+npm run build       # production build
+```
 
 ## Layout
 
 ```
 .
 ├── apps/
-│   ├── web/          # Next.js 16
+│   ├── web/          # Next.js 16 (App Router, API routes, UI kit)
 │   └── mobile/       # Expo
 ├── packages/
-│   └── shared/       # ledger, auth, money, format
-├── docs/             # ADRs, runbooks
+│   └── shared/       # ledger, auth, money, format, Zod
+├── docs/             # ADRs and runbooks
 ├── migrations/       # SQL migrations
-├── Architecture.md
+├── Architecture.md   # system design
+├── MIGRATION.md      # monorepo migration notes
 └── docker-compose.yml
 ```

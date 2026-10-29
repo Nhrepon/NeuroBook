@@ -1,5 +1,5 @@
-import InvoicesManager from '@/ui/InvoicesManager'
+import InvoiceList from './InvoiceList'
 
 export default function InvoicesPage() {
-  return <InvoicesManager fixedType="ALL" />
+  return <InvoiceList />
 }

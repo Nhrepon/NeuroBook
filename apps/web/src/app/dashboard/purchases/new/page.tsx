@@ -1,7 +1,7 @@
 'use client'
 
-import PurchaseInvoiceForm from '@/ui/PurchaseInvoiceForm'
+import InvoiceForm from '@/app/dashboard/invoices/InvoiceForm'
 
 export default function NewPurchaseInvoicePage() {
-  return <PurchaseInvoiceForm />
+  return <InvoiceForm type="purchase" />
 }

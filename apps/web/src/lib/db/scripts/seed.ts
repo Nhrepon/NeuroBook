@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '../client'
 import { tenants, users } from '../schema'
 import { ensureDefaultChart } from '../chart'
+import { ensureDefaultTaxRates } from '../tax-seed'
 
 async function main() {
   let [tenant] = await db.select().from(tenants).where(eq(tenants.slug, 'demo'))
@@ -40,9 +41,11 @@ async function main() {
   }
 
   const added = await ensureDefaultChart(tenant.id)
+  const addedTax = await ensureDefaultTaxRates(tenant.id)
 
   console.log('Seeded demo tenant (code: demo).')
   if (added > 0) console.log(`Added ${added} missing default ledger accounts.`)
+  if (addedTax > 0) console.log(`Added ${addedTax} default tax rates.`)
   console.log('Password for all demo users: password123')
   console.log('  admin@demo.com      ADMIN')
   console.log('  manager@demo.com    MANAGER')

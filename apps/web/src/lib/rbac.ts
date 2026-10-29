@@ -18,12 +18,14 @@ export function requiredPermissions(method: string, pathname: string): Permissio
     return ['voucher:write', 'sales:write', 'purchase:write', 'payment:write', 'receipt:write', 'stock:write']
   }
   if (pathname.startsWith('/api/v1/invoices')) return ['invoice:write']
+  if (pathname.startsWith('/api/v1/payments')) return ['payment:write', 'receipt:write']
   if (pathname.startsWith('/api/v1/periods')) return ['period:manage']
   if (pathname.startsWith('/api/v1/settings')) return ['settings:write']
   if (pathname.startsWith('/api/v1/bank')) return ['bank:write']
   if (pathname.startsWith('/api/v1/tax')) return ['tax:write']
   if (pathname.startsWith('/api/v1/accounts')) return ['account:write']
   if (pathname.startsWith('/api/v1/parties')) return ['party:write']
+  if (pathname.startsWith('/api/v1/categories')) return ['product:write']
   if (pathname.startsWith('/api/v1/products')) return ['product:write']
   if (pathname.startsWith('/api/v1/stock')) return ['stock:write']
   return null

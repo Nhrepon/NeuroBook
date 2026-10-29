@@ -1,5 +1,5 @@
 import { VoucherTypeSchema } from '@neurobook/shared'
-import VoucherForm from '@/ui/VoucherForm'
+import VoucherForm from '../VoucherForm'
 
 export default async function NewVoucherPage({
   searchParams,

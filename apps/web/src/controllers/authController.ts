@@ -1,15 +1,17 @@
 import { db } from '@/lib/db/client'
 import { companySettings, tenants, users } from '@/lib/db/schema'
 import { ensureDefaultChart } from '@/lib/db/chart'
+import { ensureDefaultTaxRates } from '@/lib/db/tax-seed'
 import { requirePermission, requireScope } from '@/controllers/scope'
-import { ApiError, badRequest, notFound } from '@/controllers/errors'
+import { ApiError, badRequest, conflict, notFound } from '@/controllers/errors'
 import { findSwitchTarget, listSwitchableCompanies, sessionProfile } from '@/lib/db/tenant-membership'
 import { uniqueSlug } from '@/lib/slug'
 import { signToken } from '@/lib/jwt'
 import { verifyPassword } from '@/lib/credentials'
 import { writeAudit } from '@/lib/db/audit'
+import { withTenant } from '@/lib/db/tenant'
 import argon2 from 'argon2'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 /**
  * Signs a person in. When their email belongs to more than one company and no
@@ -81,6 +83,55 @@ export async function getMe() {
   return me
 }
 
+/**
+ * Deletes the signed-in person's own account in the current company.
+ *
+ * This removes their membership row — the one this session is signed as — not
+ * the company. Another company the same email belongs to is untouched, and the
+ * caller's session ends because the user row it points at is gone. The last
+ * active admin cannot leave, or the company would have nobody to administer it.
+ */
+export async function deleteMyAccount() {
+  const scope = await requireScope()
+  return withTenant(scope.tenantId, async (tx) => {
+    const [me] = await tx
+      .select({ id: users.id, email: users.email, role: users.role, active: users.active })
+      .from(users)
+      .where(and(eq(users.id, scope.userId), eq(users.tenantId, scope.tenantId)))
+    if (!me) throw notFound('user not found')
+
+    if (me.role === 'ADMIN' && me.active) {
+      const admins = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(and(eq(users.tenantId, scope.tenantId), eq(users.role, 'ADMIN'), eq(users.active, true)))
+      if (admins.length <= 1) {
+        throw conflict(
+          'You are the only admin of this company. Make another member an admin first — or delete the company instead.',
+        )
+      }
+    }
+
+    await tx.delete(users).where(and(eq(users.id, scope.userId), eq(users.tenantId, scope.tenantId)))
+
+    // The user row is gone, so the entry cannot point at it; the email keeps the
+    // trail readable and the company's admins can still see who left.
+    await writeAudit(
+      {
+        tenantId: scope.tenantId,
+        userId: null,
+        action: 'user.self_delete',
+        resourceType: 'user',
+        resourceId: scope.userId,
+        before: { email: me.email, role: me.role },
+      },
+      tx,
+    )
+
+    return { id: scope.userId, email: me.email, sessionEnded: true }
+  })
+}
+
 /** Creates a company and its first ADMIN user, then signs that user in. */
 export async function register(input: unknown) {
   const body = (input ?? {}) as {
@@ -120,6 +171,7 @@ export async function register(input: unknown) {
     await tx.insert(companySettings).values({ tenantId: tenant.id, companyName })
 
     await ensureDefaultChart(tenant.id, tx as any)
+    await ensureDefaultTaxRates(tenant.id, tx as any)
 
     await writeAudit(
       {

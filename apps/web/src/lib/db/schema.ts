@@ -137,7 +137,6 @@ export const accounts = pgTable(
   },
   (t) => ({
     codeUniq: uniqueIndex("accounts_tenant_code_idx").on(t.tenantId, t.code),
-    idTypeUniq: uniqueIndex("accounts_id_type_idx").on(t.id, t.type),
     tenantIdx: index("accounts_tenant_idx").on(t.tenantId),
     parentIdx: index("accounts_parent_idx").on(t.parentId),
     typeCheck: check(
@@ -302,8 +301,8 @@ export const journalLines = pgTable(
     accountIdx: index("jl_account_idx").on(t.accountId),
     ledgerIdx: index("jl_tenant_account_idx").on(t.tenantId, t.accountId),
     accountFk: foreignKey({
-      columns: [t.accountId, t.accountType],
-      foreignColumns: [accounts.id, accounts.type],
+      columns: [t.accountId],
+      foreignColumns: [accounts.id],
       name: "jl_account_fk",
     }).onDelete("restrict"),
   }),
@@ -358,14 +357,31 @@ export const categories = pgTable(
       .notNull()
       .references(() => tenants.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    /** Short company code, e.g. PACE or PACE-SC. Unique per company when set. */
+    code: varchar("code", { length: 32 }),
+    description: text("description"),
+    /** Parent category for grouped taxonomies (Pacemaker -> Single chamber). */
+    parentId: uuid("parent_id"),
+    active: boolean("active").notNull().default(true),
     ...timeStamps(),
   },
   (t) => ({
     nameUnique: uniqueIndex("categories_tenant_name_uidx").on(
       t.tenantId,
-      t.name,
+      sql`lower(${t.name})`,
     ),
+    codeUniq: uniqueIndex("categories_tenant_code_uidx")
+      .on(t.tenantId, sql`lower(${t.code})`)
+      .where(sql`${t.code} IS NOT NULL`),
     tenantIdx: index("categories_tenant_idx").on(t.tenantId),
+    parentIdx: index("categories_parent_idx").on(t.tenantId, t.parentId),
+    // Deleting a parent promotes its children to the top level instead of
+    // erasing them; products keep their category.
+    parentFk: foreignKey({
+      columns: [t.parentId],
+      foreignColumns: [t.id],
+      name: "categories_parent_fk",
+    }).onDelete("set null"),
   }),
 );
 
